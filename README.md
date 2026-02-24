@@ -1,13 +1,19 @@
+
 # Homun Language Reference
 
-> A lightweight scripting language designed for ECS game engine client-side logic, in rust.
+> A lightweight scripting language designed for ECS game engine client-side logic, in Rust.
 > Compiles / transpiles directly to Rust. Designed to be embeddable, minimal, and expressive.
 
 ---
 
 ## Overview
 
-Homun is a statically-typed, expression-oriented scripting language that targets the Rust compiler as its backend. It is designed to run on the **client side** of a Rust-based game engine, providing a safe, readable, and concise scripting surface without requiring game developers to write raw Rust. Every valid Homun program maps 1-to-1 to valid Rust code, which means you get Rust's performance and safety guarantees at runtime, while writing code that feels closer to Python or Go in day-to-day use.
+Homun is a statically-typed, expression-oriented scripting language that targets the Rust compiler
+as its backend. It is designed to run on the **client side** of a Rust-based ECS game engine,
+providing a safe, readable, and concise scripting surface without requiring game developers to write
+raw Rust. Every valid Homun program maps 1-to-1 to valid Rust code, which means you get Rust's
+performance and safety guarantees at runtime, while writing code that feels closer to Python or Go
+in day-to-day use.
 
 The philosophy of Homun is radical simplicity:
 
@@ -20,6 +26,7 @@ The philosophy of Homun is radical simplicity:
 - All collections share the `@` prefix — lists `@[]`, dicts `@{}`, sets `@()` — visually consistent and parser-friendly.
 - Strict naming conventions: variables and lambdas are `snake_case`, structs and enums are recommended as `PascalCase`.
 - 1-based indexing throughout, matching the intuition of designers and artists who may not be programmers.
+- Native RON (Rusty Object Notation) integration — data structs round-trip to/from RON automatically.
 
 ---
 
@@ -30,80 +37,108 @@ The philosophy of Homun is radical simplicity:
 | Familiar to Python/Go developers | `:=` assignment, Python keywords like `and`, `or`, `in`, `not` |
 | No ceremony around functions | All callables are lambdas `\|\|{...}` |
 | Safe mapping to Rust | No raw pointers, no unsafe constructs |
-| Readable game logic | `if () do {} else {}`, `match` on enums |
+| Readable game logic | `if () do {}`, `elif`, `match` with `_` wildcard |
 | Minimal syntax noise | No `;`, no `mut`, no `import`, no bare `=` |
 | Unambiguous equality | Only `==` for comparison — `:=` is the sole assignment form |
 | Consistent collection syntax | All collections prefixed with `@`: `@[]` `@{}` `@()` |
 | Clear naming at a glance | Variables/lambdas `snake_case`, types `PascalCase` (recommended) |
 | Designer-friendly indexing | 1-based, inclusive slicing |
+| Game data pipeline | Native RON support — data structs are format and code simultaneously |
+| Transparent recursion | Compiler auto-detects recursive lambdas via two-stage parse — no `rec` keyword needed |
+
+---
+
+## Comments
+
+Single-line comments use `//`. Multi-line comments use `/* */`.
+
+```
+// this is a single-line comment
+
+/* this is a
+   multi-line comment */
+
+x := 10  // inline comment
+```
 
 ---
 
 ## Variable Assignment
 
-Homun uses `:=` for all variable bindings, inspired by Go. There is no `var`, `let`, or `const` keyword. There is also no `mut` keyword — mutability rules are handled at the Rust transpilation layer, keeping the scripting surface clean.
+Homun uses `:=` for all variable bindings, inspired by Go. There is no `var`, `let`, or `const`
+keyword. There is also no `mut` keyword — mutability rules are handled at the Rust transpilation
+layer, keeping the scripting surface clean.
 
 ```
-x := 10
-name := "hero"
-speed := float(3.14)
+x      := 10
+name   := "hero"
+speed  := float(3.14)
 active := true
 ```
 
-Types are inferred automatically from the right-hand side, similar to `auto` in C++. You may also be explicit by wrapping the value in a type constructor:
+Types are inferred automatically from the right-hand side, similar to `auto` in C++. You may also
+be explicit by wrapping the value in a type constructor:
 
 ```
-hp := int(100)
+hp    := int(100)
 ratio := float(0.5)
 label := str("player_one")
 ```
 
-If you assign a new value to an existing binding, it simply rebinds the name. There is no distinction between declaration and reassignment in the syntax — the compiler resolves this contextually.
+Rebinding an existing name simply updates the binding. There is no distinction between declaration
+and reassignment in the syntax — the compiler resolves this contextually.
 
 ---
 
 ## Naming Conventions
 
-Homun enforces and recommends strict naming conventions to keep code readable across a team of engineers and non-engineers alike.
+Homun enforces and recommends strict naming conventions to keep code readable across a team of
+engineers and non-engineers alike.
 
-### Variables and Lambdas — enforced `snake_case` (all lowercase)
+### Variables and Lambdas — enforced `snake_case`
 
-All variable names and lambda names **must** be `lower_case` or `snake_case`. Uppercase letters are **not permitted** in variable names. The compiler will reject names like `mySpeed`, `PlayerHP`, or `X`. This is a hard rule, not a style suggestion.
+All variable names and lambda names **must** be `lower_case` or `snake_case`. Uppercase letters
+are **not permitted** in variable names. The compiler will reject names like `mySpeed`, `PlayerHP`,
+or `X`. This is a hard rule, not a style suggestion.
 
 ```
--- VALID
-player_hp := 100
-move_speed := 3.5
-on_death := || -> none { respawn() }
+// VALID
+player_hp          := 100
+move_speed         := 3.5
+on_death           := || -> () { respawn() }
 base_attack_damage := 25
 
--- INVALID — compiler error
-playerHp := 100       -- camelCase not allowed
-MoveSpeed := 3.5      -- uppercase start not allowed
-X := 10               -- single uppercase letter not allowed
+// INVALID — compiler error
+playerHp  := 100    // camelCase not allowed
+MoveSpeed := 3.5    // uppercase start not allowed
+X         := 10     // single uppercase letter not allowed
 ```
 
 ### Structs and Enums — recommended `PascalCase`
 
-Type definitions (structs and enums) are recommended to use `PascalCase`. This is not enforced by the compiler but is the strong convention for all Homun code and makes it immediately obvious when a name refers to a type versus a value:
+Type definitions (structs and enums) are recommended to use `PascalCase`. This is not enforced by
+the compiler but is the strong convention for all Homun code. It makes it immediately obvious when
+a name refers to a type versus a value, without requiring a type-inference pass.
 
 ```
--- Recommended: PascalCase for types
+// Recommended: PascalCase for types
 PlayerState := struct { hp: int, alive: bool }
-Direction := enum { North, South, East, West }
-WeaponKind := enum { Sword(int), Bow(int), Staff }
+Direction   := enum { North, South, East, West }
+WeaponKind  := enum { Sword(int), Bow(int), Staff }
 
--- Allowed but discouraged: lowercase type names
-player_state := struct { hp: int }    -- works, but confusing
+// Allowed but strongly discouraged
+player_state := struct { hp: int }
 ```
 
-The reason this asymmetry exists is intentional: types exist at compile time and are structural definitions, while values exist at runtime. Keeping their naming visually distinct helps tools, LLMs, and human readers parse code intent without requiring a type-inference pass.
+This asymmetry is intentional: types exist at compile time, values exist at runtime. Keeping their
+naming visually distinct helps tools, LLMs, and human readers alike.
 
 ---
 
 ## Operators and Equality
 
-Homun has **no bare `=` operator**. This eliminates an entire class of bugs common in C-family languages where `=` and `==` are accidentally swapped.
+Homun has **no bare `=` operator**. This eliminates an entire class of bugs common in C-family
+languages where `=` and `==` are accidentally swapped.
 
 | Operator | Meaning |
 |---|---|
@@ -112,31 +147,47 @@ Homun has **no bare `=` operator**. This eliminates an entire class of bugs comm
 | `!=` | Inequality comparison, returns `bool` |
 | `<`, `>`, `<=`, `>=` | Numeric comparison |
 | `and`, `or`, `not` | Boolean logic (Python-style keywords) |
+| `in`, `not in` | Membership test for lists, sets, dict keys |
 | `+`, `-`, `*`, `/`, `%` | Arithmetic |
 
-There is no `=` for anything. Using a bare `=` is a syntax error. This means that if you ever see `:=`, you know it is a binding. If you ever see `==`, you know it is a comparison. No ambiguity exists anywhere in the language.
+Using a bare `=` is a syntax error. If you see `:=` it is always a binding. If you see `==` it is
+always a comparison. No ambiguity exists anywhere in the language.
 
 ```
-x := 10           -- bind x to 10
-y := x == 10      -- y is true (bool)
-z := x != 5       -- z is true (bool)
+x := 10
+y := x == 10      // y is true
+z := x != 5       // z is true
 
-if (x == 10) do {
-  print("ten")
-}
+if (x == 10) do { print("ten") }
 ```
+
+### Membership Tests
+
+```
+s := @("fire", "ice", "poison")
+
+if x in s do { apply(x) }
+if not x in s do { skip() }
+```
+
+Works on lists, sets, and dict keys.
 
 ---
 
 ## Primitive Types
 
-| Type | Example |
-|---|---|
-| `int` | `42`, `int(42)` |
-| `float` | `3.14`, `float(3.14)` |
-| `bool` | `true`, `false` |
-| `str` | `"hello"` |
-| `none` | used as a return type hint only |
+| Type | Example | Notes |
+|---|---|---|
+| `int` | `42`, `int(42)` | 64-bit signed integer |
+| `float` | `3.14`, `float(3.14)` | 64-bit float |
+| `bool` | `true`, `false` | |
+| `str` | `"hello"` | UTF-8, supports `${}` interpolation |
+| `none` | `none` | Missing value — equivalent to Rust's None |
+
+`none` is a single unified keyword serving two roles. As a **return type annotation** on a lambda,
+it means the lambda returns nothing (void). As a **value**, it means absence — the equivalent of
+Rust's `None`. There is no separate `null`, `nil`, or `Option` keyword. Use `match` to safely
+handle `none` values.
 
 ---
 
@@ -145,24 +196,21 @@ if (x == 10) do {
 Strings support inline variable interpolation using `${}` syntax:
 
 ```
-name := "Aria"
-greeting := "Hello, ${name}! Welcome to the dungeon."
+name  := "Aria"
 level := 5
-msg := "You are level ${level}."
+
+greeting := "Hello, ${name}! You are level ${level}."
+log      := "Dealt ${base * multiplier * 2} damage after crit."
 ```
 
-Any expression can go inside `${}`:
-
-```
-damage := base * multiplier
-log := "Dealt ${damage * 2} total damage after crit."
-```
+Any expression is valid inside `${}`.
 
 ---
 
 ## Lambdas (All Callables)
 
-There are no named functions in Homun. Every callable value is a lambda. Lambdas are first-class values and can be assigned to names, passed as arguments, or returned from other lambdas.
+There are no named functions in Homun. Every callable value is a lambda. Lambdas are first-class
+values that can be assigned to names, passed as arguments, or returned from other lambdas.
 
 ### Basic Lambda
 
@@ -170,7 +218,7 @@ There are no named functions in Homun. Every callable value is a lambda. Lambdas
 greet := |name| { "Hello ${name}" }
 ```
 
-The last expression in a lambda body is implicitly returned. No `return` keyword is needed.
+The last expression in the body is implicitly returned. No `return` keyword is needed.
 
 ### Lambda with No Arguments
 
@@ -178,54 +226,62 @@ The last expression in a lambda body is implicitly returned. No `return` keyword
 tick := || { update_physics() }
 ```
 
-### Lambda with Type Hints
+### Return Type Hints
 
-You may optionally annotate the return type. Use `-> Type` after the parameter list:
-
-```
-add := |a, b| -> int { a + b }
-```
-
-If the lambda explicitly returns nothing, use `-> none`:
+Annotate the return type with `->` after the parameter list:
 
 ```
-log_event := |msg| -> none { print(msg) }
+add       := |a, b| -> int  { a + b }
+log_event := |msg|  -> () { print(msg) }
 ```
 
-If you want to be explicit that a lambda returns unit/void but don't care to annotate, you can write `-> ()`:
+`-> ()` is the only way to express a void return. 
+
+### Recursive Lambdas
+
+Homun uses a **two-stage compiler**. In stage one, the compiler scans all lambda bodies for
+self-references before full parsing. Any lambda whose body contains its own name is automatically
+treated as recursive — no `rec` keyword or special syntax is needed by the author.
 
 ```
-fire := || -> () { spawn_bullet(pos, dir) }
+// this just works — compiler detects self-reference automatically
+fib := |n| {
+  if (n <= 1) do { n } else { fib(n-1) + fib(n-2) }
+}
 ```
 
-### Calling Lambdas
+Mutual recursion also works at the top level, because stage one registers all top-level names
+before any body is resolved:
 
 ```
-result := add(3, 5)
-greet("player")
+is_even := |n| { if (n == 0) do { true }  else { is_odd(n-1) } }
+is_odd  := |n| { if (n == 0) do { false } else { is_even(n-1) } }
 ```
+
+The compiler emits a Rust `fn` for recursive lambdas and a Rust closure for non-recursive ones.
+This distinction is completely invisible to the Homun author.
 
 ### Lambdas as Values
 
 ```
 transform := |x| { x * 2 }
-values := @[1, 2, 3, 4]
-doubled := values.map(transform)
+doubled   := @[1, 2, 3, 4].map(transform)
 ```
 
 ---
 
 ## Pipe Operator `.`
 
-The `.` operator is the pipe/method-call syntax. It is syntactic sugar for passing the left-hand side as the first argument to the right-hand side:
+The `.` operator is the pipe/method-call syntax. It desugars to passing the left-hand side as the
+first argument to the right-hand side:
 
 ```
-x.map(f)        -- desugars to: map(x, f)
-x.filter(pred)  -- desugars to: filter(x, pred)
-x.reduce(acc)   -- desugars to: reduce(x, acc)
+x.map(f)        // desugars to: map(x, f)
+x.filter(pred)  // desugars to: filter(x, pred)
+x.reduce(f)     // desugars to: reduce(x, f)
 ```
 
-You can chain pipes naturally:
+Chains read naturally as a pipeline:
 
 ```
 result := @[1, 2, 3, 4, 5]
@@ -234,11 +290,25 @@ result := @[1, 2, 3, 4, 5]
   .reduce(|a, b| { a + b })
 ```
 
+Field access also uses `.` — context determines whether it is a pipe call or a field read:
+
+```
+p.hp      // field access — p.hp is a value
+p.map(f)  // pipe call   — desugars to map(p, f)
+```
+
 ---
 
 ## Collections
 
-All collection literals are prefixed with `@`. This applies uniformly to lists, dicts, and sets — the shape of the bracket that follows tells you which kind. `@[]` is a list, `@{}` is a dict, `@()` is a set. This keeps the parser simple, makes collection usage visually obvious in dense game logic code, and means you never have to guess whether a bare `(...)` is a set, a tuple, or a grouping expression — it is always a grouping expression, and sets are always `@(...)`.
+All collection literals are prefixed with `@`. The bracket shape that follows tells you the kind.
+A bare `(...)` without `@` is always a grouping expression, never a collection.
+
+| Syntax | Kind | Ordered | Duplicates | Rust type |
+|---|---|---|---|---|
+| `@[...]` | List | yes | yes | `Vec<T>` |
+| `@{...}` | Dict | no | keys unique | `HashMap<K,V>` |
+| `@(...)` | Set | no | no | `HashSet<T>` |
 
 ### Lists (Dynamic Arrays)
 
@@ -255,8 +325,6 @@ squares := @[x * x for x in upto(10)]
 evens   := @[x for x in upto(20) if x % 2 == 0]
 ```
 
-`upto(n)` generates a 1-based range from 1 to n inclusive.
-
 ### Dicts (Hash Maps)
 
 ```
@@ -271,14 +339,30 @@ inverted := @{v: k for k, v in scores}
 squared  := @{x: x*x for x in upto(5)}
 ```
 
-### Sets
-
-Sets use the `@()` prefix — consistent with the `@` convention for all collection types. Unlike lists and dicts, sets are unordered and contain no duplicate values.
+Dict access and update:
 
 ```
-visited  := @(1, 3, 5, 7)
-flags    := @("fire", "ice", "poison")
-empty_s  := @()
+s := scores["alice"]    // returns the value, or none if key missing
+scores["alice"] := 90   // update or insert
+```
+
+If a key does not exist, dict access returns `none`. Guard with `match` when the key may be absent:
+
+```
+match scores["unknown"] {
+  none => print("not found")
+  val  => print("score: ${val}")
+}
+```
+
+### Sets
+
+Sets are unordered and contain no duplicate values.
+
+```
+visited   := @(1, 3, 5, 7)
+flags     := @("fire", "ice", "poison")
+empty_set := @()
 ```
 
 Set comprehension:
@@ -287,13 +371,12 @@ Set comprehension:
 unique_floors := @(x for x in floor_list)
 ```
 
-Because all three collection types share the `@` prefix, the bracket shape tells you the kind: `@[]` is a list (ordered, indexed), `@{}` is a dict (key-value), and `@()` is a set (unordered, unique).
-
 ---
 
 ## Slicing and Indexing
 
-Homun is **1-based**. The first element of any list is at index `1`, not `0`. This applies to all slicing and indexing operations.
+Homun is **1-based**. The first element of any list is at index `1`. All slicing is inclusive on
+both ends.
 
 ### Single Index
 
@@ -302,41 +385,55 @@ first := items[1]
 third := items[3]
 ```
 
-### Slicing `[start..end, step?]`
-
-Slices use `..` notation. The range is **inclusive on both ends**. The optional step follows a comma.
-
-```
--- Items 1 through 3
-sub := items[1..3]       -- [items[1], items[2], items[3]]
-
--- Items 3 down to 1 (reverse)
-rev := items[3..1, -1]   -- [items[3], items[2], items[1]]
-
--- Every other item from 1 to 10
-alt := items[1..10, 2]   -- [items[1], items[3], items[5], ...]
-```
-
-Because the language is 1-based and slices are inclusive, `[3..1]` yields three elements: the 3rd, 2nd, and 1st — in that order.
+### Slicing `[start..end]` and `[start..end, step]`
 
 ```
 x := @[10, 20, 30, 40, 50]
-x[1..3]       -- [10, 20, 30]
-x[3..1, -1]   -- [30, 20, 10]
-x[2..5]       -- [20, 30, 40, 50]
+
+x[1..3]      // [10, 20, 30]      — elements 1, 2, 3
+x[3..1, -1]  // [30, 20, 10]      — elements 3, 2, 1 (reversed)
+x[2..5]      // [20, 30, 40, 50]  — elements 2, 3, 4, 5
+x[1..5, 2]   // [10, 30, 50]      — every other element
+```
+
+Because slices are inclusive and 1-based, `[3..1, -1]` yields exactly three elements: the 3rd,
+2nd, and 1st — in that order. This differs from Python where `[3:1:-1]` is 0-based and
+exclusive-end.
+
+### Numeric Ranges
+
+`upto(n)` generates a 1-based range from 1 to n inclusive. For ranges that do not start at 1,
+use `from(a, b)` which is also inclusive on both ends:
+
+```
+upto(5)     // 1, 2, 3, 4, 5
+from(3, 7)  // 3, 4, 5, 6, 7
+```
+
+Both are usable in `for` loops and comprehensions:
+
+```
+for i in from(5, 10) do { print(i) }
+mid := @[x for x in from(3, 7)]
 ```
 
 ---
 
 ## Control Flow
 
-### `if` / `else`
+### The `do` Rule
 
-The `if` syntax always uses `do` before the body to distinguish the condition from the block without relying on indentation:
+Any block preceded by a condition expression uses `do` before the opening `{`. This applies
+uniformly to `if`, `elif`, `for`, and `while`. A bare `else` has no condition and therefore
+no `do`.
+
+### `if` / `elif` / `else`
 
 ```
 if (hp <= 0) do {
   die()
+} elif (hp < 20) do {
+  play_low_health_sound()
 } else {
   recover()
 }
@@ -348,23 +445,45 @@ One-liner form:
 if (x > 10) do { print("big") } else { print("small") }
 ```
 
-There is no `elif` — chain `else if` instead:
-
-```
-if (score > 90) do {
-  grade := "A"
-} else if (score > 75) do {
-  grade := "B"
-} else {
-  grade := "C"
-}
-```
-
 Boolean operators use Python-style keywords:
 
 ```
 if (alive and not frozen) do { move() }
 if (on_fire or in_water) do { apply_effect() }
+if not x in visited do { explore(x) }
+```
+
+### `match`
+
+`match` is an expression — its result can be directly assigned. Use `_` as the wildcard/default
+arm. The compiler warns if a `match` is non-exhaustive and no `_` arm exists.
+
+```
+result := match dir {
+  Direction.North => move(0, 1)
+  Direction.South => move(0, -1)
+  Direction.East  => move(1, 0)
+  Direction.West  => move(-1, 0)
+}
+```
+
+Matching enum variants that carry data:
+
+```
+dmg := match element {
+  Element.Fire(power) => power * 2
+  Element.Ice(power)  => power * 1.5
+  _                   => 0
+}
+```
+
+Matching `none` for missing values:
+
+```
+match find_target(pos) {
+  none   => idle()
+  target => attack(target)
+}
 ```
 
 ---
@@ -395,16 +514,93 @@ while (enemies_remaining > 0) do {
 }
 ```
 
+### `break` and `continue`
+
+`break` exits the nearest enclosing loop. `continue` skips to the next iteration. Both work
+transparently inside `match` blocks — `match` is not a loop and does not intercept them.
+
+```
+for entity in entities do {
+  if (entity.hp == 0) do { continue }
+  if (entity.is_boss)  do { break }
+  attack(entity)
+}
+```
+
+Using `break` and `continue` inside a `match` inside a loop:
+
+```
+for item in inventory do {
+  match item.kind {
+    ItemKind.Key  => break     // exits the for loop
+    ItemKind.Junk => continue  // skips to next item
+    _             => use(item)
+  }
+}
+```
+
+---
+
+## Destructuring and Swap
+
+Multiple names can be bound simultaneously on the left side of `:=`. The right-hand side is fully
+evaluated before any binding occurs, making swaps always safe. Use `_` to discard a value.
+
+```
+a, b := b, a              // swap a and b
+_, second := get_pair()   // discard first, keep second
+x, y := y, x + y          // Fibonacci step
+```
+
+---
+
+## Result and `none`
+
+Homun uses `none` as a unified concept for both void returns and missing values. For operations
+that can fail with a reason, Homun uses Rust's `Result<T, E>` model with `Ok` and `Err`:
+
+```
+r := load_file("map.ron")
+
+match r {
+  Ok(data) => process(data)
+  Err(msg) => print("failed: ${msg}")
+}
+```
+
+Constructing results in a lambda:
+
+```
+safe_div := |a, b| -> Result {
+  if (b == 0) do { Err("division by zero") } else { Ok(a / b) }
+}
+```
+
+For simple nullable values — presence or absence with no error message — use `none` directly and
+match on it:
+
+```
+target := find_nearest_enemy(pos)   // returns a value or none
+
+match target {
+  none => idle()
+  t    => attack(t)
+}
+```
+
 ---
 
 ## Structs
 
-Homun has no classes. Data is organized using structs. Behavior is attached by assigning lambdas that accept the struct as a parameter — the engine binds these at the Rust level.
+Homun has no classes. Data is organized with structs. Behavior is modeled by assigning lambdas
+that accept structs as parameters.
+
+### Named Structs
 
 ```
 Player := struct {
-  name: str
-  hp: int
+  name:  str
+  hp:    int
   speed: float
 }
 
@@ -416,7 +612,55 @@ p := create_player("Aria", 100, 3.5)
 print(p.name)
 ```
 
-Structs are value types. Assigning a struct copies it unless passed through a reference wrapper provided by the engine.
+### Anonymous Structs
+
+A struct literal without a named type is valid. The compiler generates a synthetic Rust struct
+behind the scenes. Field access by name works normally. Two anonymous structs with identical field
+names and types are treated as the same type.
+
+```
+pos := { x: 1.0, y: 2.0 }
+print(pos.x)
+```
+
+### Field Mutation
+
+Fields are updated using `:=` with dot access:
+
+```
+p.hp    := p.hp - 10
+p.speed := 5.0
+```
+
+This desugars to a Rust `let mut` rebinding of the struct. Structs are value types — mutations are
+local unless the struct is explicitly returned or passed back out.
+
+### Data Structs vs Behavior Structs
+
+The compiler automatically classifies every struct into one of two kinds based on its fields:
+
+**Data structs** — all fields are primitives, other data structs, lists, dicts, or sets. No lambda
+fields. These are automatically RON-serializable and get `#[derive(Serialize, Deserialize, Clone)]`
+in the transpiled Rust.
+
+```
+// data struct — RON compatible, auto-derives Serialize + Deserialize
+Vec2   := struct { x: float, y: float }
+Player := struct { name: str, hp: int, pos: Vec2 }
+```
+
+**Behavior structs** — at least one field is a lambda type. Not RON-serializable. Get only
+`#[derive(Clone)]`.
+
+```
+// behavior struct — NOT RON compatible
+EnemyAI := struct {
+  state:   str
+  on_tick: || -> ()    // lambda field disqualifies RON
+}
+```
+
+The author never declares which kind a struct is. The compiler infers it entirely from field types.
 
 ---
 
@@ -425,21 +669,22 @@ Structs are value types. Assigning a struct copies it unless passed through a re
 Enums define a closed set of named variants, optionally carrying data.
 
 ```
-Direction := enum {
-  North
-  South
-  East
-  West
-}
+Direction := enum { North, South, East, West }
 
 Element := enum {
   Fire(int)
   Ice(int)
   Neutral
 }
+
+WeaponKind := enum {
+  Sword(int)
+  Bow(int)
+  Staff
+}
 ```
 
-Pattern matching with `match`:
+Pattern matching with wildcard:
 
 ```
 result := match dir {
@@ -448,19 +693,80 @@ result := match dir {
   Direction.East  => move(1, 0)
   Direction.West  => move(-1, 0)
 }
-```
 
-Matching with bound data:
-
-```
 dmg := match element {
-  Element.Fire(power)    => power * 2
-  Element.Ice(power)     => power * 1.5
-  Element.Neutral        => 0
+  Element.Fire(p) => p * 2
+  Element.Ice(p)  => p * 1.5
+  _               => 0        // wildcard arm
 }
 ```
 
-`match` is an expression — its result can be directly assigned.
+`match` is exhaustive — the compiler warns if not all variants are covered and no `_` arm exists.
+
+---
+
+## RON Integration
+
+Homun has native support for **RON (Rusty Object Notation)**, the structured data format used
+throughout the Rust game engine ecosystem. Because Homun struct literals and RON share the same
+conceptual model, data structs in Homun are simultaneously code and serialized data format.
+
+### Loading RON Files
+
+```
+map := load_ron("levels/world1.ron") as Map
+print("width: ${map.width}")
+```
+
+The `as Type` annotation is required. The compiler validates the RON file against the named struct
+at **compile time** — missing fields, wrong types, and unknown keys are compile errors, not runtime
+crashes. Level designers editing RON files get full type checking for free.
+
+### Saving RON Files
+
+Any data struct can be written to RON with no extra configuration:
+
+```
+config := ServerConfig { host: "localhost", port: 8080 }
+save_ron(config, "config.ron")
+```
+
+### Homun Struct Literals and RON Share the Same Grammar
+
+A pure-data Homun struct literal is valid RON and can round-trip through it without loss. The only
+syntactic difference is that Homun list literals use `@[...]` while RON uses `[...]` — the compiler
+strips the `@` prefix when emitting RON automatically.
+
+```
+// this Homun value...
+template := Enemy {
+  name: "Goblin",
+  hp:   30,
+  loot: @["gold_coin", "rusty_sword"],
+}
+
+// ...round-trips to/from this RON exactly:
+// Enemy(
+//   name: "Goblin",
+//   hp: 30,
+//   loot: ["gold_coin", "rusty_sword"],
+// )
+```
+
+### RON Collection Mapping
+
+| Homun | RON |
+|---|---|
+| `@[...]` list | `[...]` array |
+| `@{...}` dict | `{...}` map |
+| `@(...)` set | `[...]` array (deduplication applied on load) |
+| Struct literal | `TypeName(field: value, ...)` |
+
+### Restrictions
+
+Only **data structs** are RON-compatible. Calling `save_ron` on a behavior struct (one with lambda
+fields) is a **compile error**. The entire game data pipeline — levels, configs, templates, save
+files — can be built on data structs and RON with zero boilerplate.
 
 ---
 
@@ -471,6 +777,7 @@ These are provided by the engine runtime environment:
 | Name | Description |
 |---|---|
 | `upto(n)` | 1-based range from 1 to n inclusive |
+| `from(a, b)` | Inclusive range from a to b (both 1-based) |
 | `print(x)` | Output to engine console |
 | `len(col)` | Length of a list, dict, or set |
 | `keys(d)` | Keys of a dict as a list |
@@ -481,81 +788,147 @@ These are provided by the engine runtime environment:
 | `reduce(col, f)` | Fold a list using a binary lambda |
 | `floor(x)` | Floor of a float |
 | `ceil(x)` | Ceiling of a float |
-| `clamp(x, lo, hi)` | Clamp x to [lo, hi] |
+| `clamp(x, lo, hi)` | Clamp x between lo and hi inclusive |
 | `abs(x)` | Absolute value |
+| `load_ron(path) as T` | Load and validate a RON file against struct T (compile-time checked) |
+| `save_ron(val, path)` | Serialize a data struct to a RON file |
 
 ---
 
 ## Rust Transpilation Notes
 
-Homun compiles to idiomatic Rust. The following mappings are used:
+Homun compiles to idiomatic Rust. The naming conventions of Homun (`snake_case` for values,
+`PascalCase` for types) match Rust's own conventions exactly, so no name mangling is ever needed.
 
 | Homun | Rust |
 |---|---|
-| `:=` binding | `let` (or `let mut` when the compiler detects reassignment) |
+| `:=` binding | `let` (or `let mut` when compiler detects reassignment) |
 | `==` equality | `==` (no bare `=` exists in Homun) |
-| Lambda `\|\|{...}` | Rust closure or `fn` depending on context |
+| Non-recursive lambda | Rust closure `\|...\| { ... }` |
+| Recursive lambda | Rust named `fn` (auto-detected, two-stage compile) |
 | `@[...]` list | `Vec<T>` |
 | `@{...}` dict | `HashMap<K, V>` |
 | `@(...)` set | `HashSet<T>` |
-| Struct | `struct` with `#[derive(Clone)]` |
+| Data struct | `struct` with `#[derive(Serialize, Deserialize, Clone)]` |
+| Behavior struct | `struct` with `#[derive(Clone)]` |
 | Enum | `enum` |
-| `match` | `match` |
-| `.` pipe | function call with first arg |
+| `match` with `_` | `match` with `_` wildcard arm |
+| `.` pipe | function call with receiver as first argument |
 | String `${}` | `format!()` macro |
 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
-| `none` return | `()` unit type |
-| Variable name `snake_case` | Rust `snake_case` (matches Rust convention natively) |
-| Type name `PascalCase` | Rust `PascalCase` struct/enum (matches Rust convention natively) |
-| 1-based slice | transpiled with index offset + bounds check |
+| `in`, `not in` | `.contains()` |
+| `-> ()` return | `()` unit type |
+| `none` value | `Option::None` |
+| `Ok(v)`, `Err(e)` | `Result::Ok(v)`, `Result::Err(e)` |
+| `p.field := v` | `let mut p = p; p.field = v;` |
+| `a, b := b, a` | `let (a, b) = (b, a);` |
+| `load_ron(p) as T` | `ron::from_str::<T>(...)` with compile-time schema validation |
+| 1-based slice `[i..j]` | index arithmetic with bounds check |
+| Variable `snake_case` | Rust `snake_case` — no mangling |
+| Type `PascalCase` | Rust `PascalCase` — no mangling |
 
 ---
 
 ## Quick Reference Card
 
 ```
--- Variable (snake_case only)
-x := 42
-player_name := "hero"
+// Variables (snake_case enforced)
+x            := 42
+player_name  := "Aria"
+player_hp    := int(100)
 
--- Lambda (snake_case only)
-double := |x| { x * 2 }
-greet  := |name| -> str { "Hi ${name}" }
-tick   := || -> none { update() }
+// Lambdas
+double   := |x|    { x * 2 }
+greet    := |name| -> str  { "Hi ${name}" }
+tick     := ||     -> () { update() }
+safe_div := |a, b| -> Result {
+  if (b == 0) do { Err("div by zero") } else { Ok(a / b) }
+}
 
--- Equality (== only, no bare =)
-x == 42          -- true
-x != 0           -- true
+// Recursion — no special syntax
+fib := |n| { if (n <= 1) do { n } else { fib(n-1) + fib(n-2) } }
 
--- Call / Pipe
-double(5)
-@[1,2,3].map(double)
+// Operators
+x == 42           // equality
+x != 0            // inequality
+"fire" in flags   // membership
+not "x" in flags  // non-membership
 
--- If
-if (x > 0) do { print("pos") } else { print("neg") }
+// Pipe
+@[1, 2, 3, 4, 5]
+  .filter(|x| { x > 2 })
+  .map(|x| { x * 10 })
+  .reduce(|a, b| { a + b })
 
--- For
-for i in upto(5) do { print(i) }
+// If / elif / else  (do rule: condition blocks always use do)
+if (hp <= 0) do {
+  die()
+} elif (hp < 20) do {
+  warn()
+} else {
+  recover()
+}
 
--- List / Dict / Set  (all use @ prefix)
+// Loops with break / continue
+for item in inventory do {
+  if not item.usable  do { continue }
+  if item.is_key      do { break }
+  use(item)
+}
+
+while (alive and enemies > 0) do {
+  attack_nearest()
+}
+
+// Ranges
+upto(5)       // 1, 2, 3, 4, 5
+from(3, 7)    // 3, 4, 5, 6, 7
+
+// Collections (all use @ prefix)
 items  := @[1, 2, 3]
-scores := @{"a": 10, "b": 20}
-flags  := @(1, 2, 3)
+scores := @{"alice": 100, "bob": 80}
+flags  := @("fire", "ice", "poison")
 
--- Slice (1-based, inclusive)
-items[1..3]       -- first three
-items[3..1, -1]   -- last three, reversed
+// Dict access
+val := scores["alice"]    // value or none
+scores["bob"] := 99       // update or insert
 
--- Struct (PascalCase recommended)
-Pos := struct { x: float, y: float }
-p := Pos { x: 1.0, y: 2.0 }
+// Slicing (1-based, inclusive)
+items[1..3]       // first three elements
+items[3..1, -1]   // last three, reversed
 
--- Enum + match (PascalCase recommended)
-Dir := enum { Up, Down }
+// Destructuring / swap
+a, b   := b, a
+_, val := get_pair()
+
+// Struct (PascalCase recommended)
+Vec2 := struct { x: float, y: float }
+p    := Vec2 { x: 1.0, y: 2.0 }
+p.x  := 5.0               // field mutation
+
+// Enum + match with wildcard
+Dir := enum { Up, Down, Left, Right }
 match dir {
   Dir.Up   => move_up()
   Dir.Down => move_down()
+  _        => idle()       // wildcard
 }
+
+// none — missing value
+match find_enemy(pos) {
+  none   => idle()
+  target => attack(target)
+}
+
+// Result
+match load_file("data.ron") {
+  Ok(data) => process(data)
+  Err(msg) => print("error: ${msg}")
+}
+
+// RON integration
+level := load_ron("level1.ron") as Level
+save_ron(player_state, "save.ron")
 ```
 
 ---
