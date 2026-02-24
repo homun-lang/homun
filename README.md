@@ -1,4 +1,3 @@
-
 # Homun Language Reference
 
 > A lightweight scripting language designed for ECS game engine client-side logic, in Rust.
@@ -45,6 +44,7 @@ The philosophy of Homun is radical simplicity:
 | Designer-friendly indexing | 1-based, inclusive slicing |
 | Game data pipeline | Native RON support — data structs are format and code simultaneously |
 | Transparent recursion | Compiler auto-detects recursive lambdas via two-stage parse — no `rec` keyword needed |
+| Unambiguous pipe vs field | Same-line `.` is always field access or lambda-field call; new-line `.` is always a pipe |
 
 ---
 
@@ -182,12 +182,11 @@ Works on lists, sets, and dict keys.
 | `float` | `3.14`, `float(3.14)` | 64-bit float |
 | `bool` | `true`, `false` | |
 | `str` | `"hello"` | UTF-8, supports `${}` interpolation |
-| `none` | `none` | Missing value — equivalent to Rust's None |
+| `none` | `none` | Missing value — equivalent to Rust's `Option::None`. Use `match` to handle safely. |
 
-`none` is a single unified keyword serving two roles. As a **return type annotation** on a lambda,
-it means the lambda returns nothing (void). As a **value**, it means absence — the equivalent of
-Rust's `None`. There is no separate `null`, `nil`, or `Option` keyword. Use `match` to safely
-handle `none` values.
+`none` is a value that represents absence. It is never used as a return type annotation. To express
+that a lambda returns nothing, use `-> ()` — this is the sole void return form, matching Rust's
+unit type directly. Use `match` to safely handle expressions that may produce `none`.
 
 ---
 
@@ -231,11 +230,12 @@ tick := || { update_physics() }
 Annotate the return type with `->` after the parameter list:
 
 ```
-add       := |a, b| -> int  { a + b }
-log_event := |msg|  -> () { print(msg) }
+add       := |a, b| -> int { a + b }
+log_event := |msg|  -> ()  { print(msg) }
 ```
 
-`-> ()` is the only way to express a void return. 
+`-> ()` is the only way to express a void return. It maps directly to Rust's unit type `()`.
+There is no `-> none` form — `none` is a value, not a type annotation.
 
 ### Recursive Lambdas
 
@@ -272,13 +272,47 @@ doubled   := @[1, 2, 3, 4].map(transform)
 
 ## Pipe Operator `.`
 
-The `.` operator is the pipe/method-call syntax. It desugars to passing the left-hand side as the
-first argument to the right-hand side:
+The `.` operator serves two distinct roles — **field access** and **pipe call** — with an explicit
+syntactic rule that makes them unambiguous at the grammar level:
+
+> **A `.` on the same line as its receiver is always a field access or a call on a lambda stored
+> in that field. A `.` that begins a new line (optionally preceded by whitespace) is always a pipe
+> call and desugars to passing the accumulated left-hand side as the first argument.**
+
+These two forms never overlap. The parser does not need to inspect types or perform lookahead
+beyond the newline boundary to resolve them.
+
+### Same-line `.` — Field Access and Lambda-field Calls
 
 ```
-x.map(f)        // desugars to: map(x, f)
-x.filter(pred)  // desugars to: filter(x, pred)
-x.reduce(f)     // desugars to: reduce(x, f)
+p.hp          // field read — reads the hp field of p
+p.name        // field read — reads the name field of p
+e.on_tick()   // lambda-field call — calls the lambda stored in field on_tick
+e.on_tick(x)  // lambda-field call — calls the lambda stored in field on_tick with argument x
+```
+
+Even when a field name happens to match a global built-in (like `map`), the same-line rule applies:
+
+```
+Enemy := struct { map: str, hp: int }
+
+e.map         // field read — reads the map field, always
+e.map(f)      // lambda-field call — calls whatever lambda is stored in field map with f
+              // this is NEVER a pipe to the global map function
+```
+
+If you need to pipe a value into a global function, put the `.` on a new line.
+
+### New-line `.` — Pipe Calls
+
+A `.` at the start of a new line (after any indentation) is a pipe call. It desugars to passing
+the accumulated expression above it as the first argument to the right-hand side:
+
+```
+x
+  .map(f)        // desugars to: map(x, f)
+  .filter(pred)  // desugars to: filter(map(x, f), pred)
+  .reduce(g)     // desugars to: reduce(filter(map(x, f), pred), g)
 ```
 
 Chains read naturally as a pipeline:
@@ -290,12 +324,16 @@ result := @[1, 2, 3, 4, 5]
   .reduce(|a, b| { a + b })
 ```
 
-Field access also uses `.` — context determines whether it is a pipe call or a field read:
+The opening value (`@[1, 2, 3, 4, 5]`) and each chained `.step(...)` each occupy their own line.
+The entire chain is a single expression and the result is assigned with `:=` as normal.
 
-```
-p.hp      // field access — p.hp is a value
-p.map(f)  // pipe call   — desugars to map(p, f)
-```
+### Summary
+
+| Form | Position | Meaning |
+|---|---|---|
+| `e.field` | same line | field read |
+| `e.field(args)` | same line | call lambda stored in field |
+| `.fn(args)` | new line | pipe call — desugars to `fn(receiver, args)` |
 
 ---
 
@@ -554,30 +592,10 @@ x, y := y, x + y          // Fibonacci step
 
 ---
 
-## Result and `none`
+## `none` — Missing Values
 
-Homun uses `none` as a unified concept for both void returns and missing values. For operations
-that can fail with a reason, Homun uses Rust's `Result<T, E>` model with `Ok` and `Err`:
-
-```
-r := load_file("map.ron")
-
-match r {
-  Ok(data) => process(data)
-  Err(msg) => print("failed: ${msg}")
-}
-```
-
-Constructing results in a lambda:
-
-```
-safe_div := |a, b| -> Result {
-  if (b == 0) do { Err("division by zero") } else { Ok(a / b) }
-}
-```
-
-For simple nullable values — presence or absence with no error message — use `none` directly and
-match on it:
+`none` represents absence — a missing or optional value with no error reason. Use `match` to
+safely handle expressions that may produce `none`:
 
 ```
 target := find_nearest_enemy(pos)   // returns a value or none
@@ -587,6 +605,10 @@ match target {
   t    => attack(t)
 }
 ```
+
+Errors and failures are handled in Rust space, not script space. Homun lambdas that encounter
+error conditions should communicate through `none` or by producing a sentinel value appropriate
+to the game logic. Runtime error handling lives in the engine layer.
 
 ---
 
@@ -625,7 +647,7 @@ print(pos.x)
 
 ### Field Mutation
 
-Fields are updated using `:=` with dot access:
+Fields are updated using `:=` with same-line dot access:
 
 ```
 p.hp    := p.hp - 10
@@ -722,6 +744,9 @@ The `as Type` annotation is required. The compiler validates the RON file agains
 at **compile time** — missing fields, wrong types, and unknown keys are compile errors, not runtime
 crashes. Level designers editing RON files get full type checking for free.
 
+The `as` keyword is reserved exclusively for this construct. It is not a general cast or
+type-coercion operator anywhere else in the language.
+
 ### Saving RON Files
 
 Any data struct can be written to RON with no extra configuration:
@@ -783,7 +808,7 @@ These are provided by the engine runtime environment:
 | `keys(d)` | Keys of a dict as a list |
 | `values(d)` | Values of a dict as a list |
 | `zip(a, b)` | Pair two lists element-wise |
-| `map(col, f)` | Apply f to each element (also via pipe `.map(f)`) |
+| `map(col, f)` | Apply f to each element (also via new-line pipe `.map(f)`) |
 | `filter(col, f)` | Keep elements where f returns true |
 | `reduce(col, f)` | Fold a list using a binary lambda |
 | `floor(x)` | Floor of a float |
@@ -813,13 +838,14 @@ Homun compiles to idiomatic Rust. The naming conventions of Homun (`snake_case` 
 | Behavior struct | `struct` with `#[derive(Clone)]` |
 | Enum | `enum` |
 | `match` with `_` | `match` with `_` wildcard arm |
-| `.` pipe | function call with receiver as first argument |
+| Same-line `.field` | field access on struct |
+| Same-line `.field(args)` | call lambda stored in field |
+| New-line `.fn(args)` | function call with receiver as first argument |
 | String `${}` | `format!()` macro |
 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
 | `in`, `not in` | `.contains()` |
 | `-> ()` return | `()` unit type |
 | `none` value | `Option::None` |
-| `Ok(v)`, `Err(e)` | `Result::Ok(v)`, `Result::Err(e)` |
 | `p.field := v` | `let mut p = p; p.field = v;` |
 | `a, b := b, a` | `let (a, b) = (b, a);` |
 | `load_ron(p) as T` | `ron::from_str::<T>(...)` with compile-time schema validation |
@@ -838,12 +864,9 @@ player_name  := "Aria"
 player_hp    := int(100)
 
 // Lambdas
-double   := |x|    { x * 2 }
-greet    := |name| -> str  { "Hi ${name}" }
-tick     := ||     -> () { update() }
-safe_div := |a, b| -> Result {
-  if (b == 0) do { Err("div by zero") } else { Ok(a / b) }
-}
+double := |x|    { x * 2 }
+greet  := |name| -> str { "Hi ${name}" }
+tick   := ||     -> ()  { update() }
 
 // Recursion — no special syntax
 fib := |n| { if (n <= 1) do { n } else { fib(n-1) + fib(n-2) } }
@@ -854,11 +877,16 @@ x != 0            // inequality
 "fire" in flags   // membership
 not "x" in flags  // non-membership
 
-// Pipe
+// Pipe — new-line dot only
 @[1, 2, 3, 4, 5]
   .filter(|x| { x > 2 })
   .map(|x| { x * 10 })
   .reduce(|a, b| { a + b })
+
+// Field access and lambda-field calls — same-line dot only
+p.hp              // field read
+e.on_tick()       // call lambda stored in field on_tick
+e.on_tick(delta)  // call lambda stored in field on_tick with argument
 
 // If / elif / else  (do rule: condition blocks always use do)
 if (hp <= 0) do {
@@ -904,7 +932,7 @@ _, val := get_pair()
 // Struct (PascalCase recommended)
 Vec2 := struct { x: float, y: float }
 p    := Vec2 { x: 1.0, y: 2.0 }
-p.x  := 5.0               // field mutation
+p.x  := 5.0               // field mutation (same-line dot)
 
 // Enum + match with wildcard
 Dir := enum { Up, Down, Left, Right }
@@ -918,12 +946,6 @@ match dir {
 match find_enemy(pos) {
   none   => idle()
   target => attack(target)
-}
-
-// Result
-match load_file("data.ron") {
-  Ok(data) => process(data)
-  Err(msg) => print("error: ${msg}")
 }
 
 // RON integration
