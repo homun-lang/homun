@@ -23,6 +23,9 @@ The philosophy of Homun is radical simplicity:
 - No mutable/immutable split in the declaration syntax — assignments are clear and uniform.
 - No `=` operator at all — `:=` binds, `==` compares. There is no ambiguity between assignment and equality.
 - All collections share the `@` prefix — lists `@[]`, dicts `@{}`, sets `@()` — visually consistent and parser-friendly.
+- Lambdas use `(params) -> { body }` — braces always required, no expression-body shorthand.
+- `|` is the pipe operator — explicit, same-line or multi-line, no whitespace sensitivity.
+- `-> _` marks a void-returning lambda — `_` means "discard," consistent with destructuring.
 - Strict naming conventions: variables and lambdas are `snake_case`, structs and enums are recommended as `PascalCase`.
 - 1-based indexing throughout, matching the intuition of designers and artists who may not be programmers.
 - Native RON (Rusty Object Notation) integration — data structs round-trip to/from RON automatically.
@@ -34,17 +37,18 @@ The philosophy of Homun is radical simplicity:
 | Goal | Decision |
 |---|---|
 | Familiar to Python/Go developers | `:=` assignment, Python keywords like `and`, `or`, `in`, `not` |
-| No ceremony around functions | All callables are lambdas `\|\|{...}` |
+| No ceremony around functions | All callables are lambdas `(params) -> { ... }` |
 | Safe mapping to Rust | No raw pointers, no unsafe constructs |
 | Readable game logic | `if () do {}`, `elif`, `match` with `_` wildcard |
 | Minimal syntax noise | No `;`, no `mut`, no `import`, no bare `=` |
 | Unambiguous equality | Only `==` for comparison — `:=` is the sole assignment form |
 | Consistent collection syntax | All collections prefixed with `@`: `@[]` `@{}` `@()` |
+| Explicit pipe operator | `\|` pipes a value into the next call — no whitespace-sensitive rules |
 | Clear naming at a glance | Variables/lambdas `snake_case`, types `PascalCase` (recommended) |
 | Designer-friendly indexing | 1-based, inclusive slicing |
 | Game data pipeline | Native RON support — data structs are format and code simultaneously |
 | Transparent recursion | Compiler auto-detects recursive lambdas via two-stage parse — no `rec` keyword needed |
-| Unambiguous pipe vs field | Same-line `.` is always field access or lambda-field call; new-line `.` is always a pipe |
+| Unambiguous void return | `-> _` means this lambda produces nothing — `_` is the discard marker, consistent with destructuring |
 
 ---
 
@@ -105,7 +109,7 @@ or `X`. This is a hard rule, not a style suggestion.
 // VALID
 player_hp          := 100
 move_speed         := 3.5
-on_death           := || -> () { respawn() }
+on_death           := () -> _ { respawn() }
 base_attack_damage := 25
 
 // INVALID — compiler error
@@ -149,6 +153,7 @@ languages where `=` and `==` are accidentally swapped.
 | `and`, `or`, `not` | Boolean logic (Python-style keywords) |
 | `in`, `not in` | Membership test for lists, sets, dict keys |
 | `+`, `-`, `*`, `/`, `%` | Arithmetic |
+| `\|` | Pipe — passes left-hand value as first argument to right-hand call |
 
 Using a bare `=` is a syntax error. If you see `:=` it is always a binding. If you see `==` it is
 always a comparison. No ambiguity exists anywhere in the language.
@@ -185,8 +190,8 @@ Works on lists, sets, and dict keys.
 | `none` | `none` | Missing value — equivalent to Rust's `Option::None`. Use `match` to handle safely. |
 
 `none` is a value that represents absence. It is never used as a return type annotation. To express
-that a lambda returns nothing, use `-> ()` — this is the sole void return form, matching Rust's
-unit type directly. Use `match` to safely handle expressions that may produce `none`.
+that a lambda returns nothing, use `-> _` — this is the sole void return form, mapping to Rust's
+unit type `()`. Use `match` to safely handle expressions that may produce `none`.
 
 ---
 
@@ -211,10 +216,14 @@ Any expression is valid inside `${}`.
 There are no named functions in Homun. Every callable value is a lambda. Lambdas are first-class
 values that can be assigned to names, passed as arguments, or returned from other lambdas.
 
+Braces `{}` are **always required** around the lambda body. There is no expression-body shorthand.
+This keeps every lambda visually uniform regardless of its complexity — the parser always knows
+exactly where the body starts and ends.
+
 ### Basic Lambda
 
 ```
-greet := |name| { "Hello ${name}" }
+greet := (name) -> { "Hello ${name}" }
 ```
 
 The last expression in the body is implicitly returned. No `return` keyword is needed.
@@ -222,20 +231,38 @@ The last expression in the body is implicitly returned. No `return` keyword is n
 ### Lambda with No Arguments
 
 ```
-tick := || { update_physics() }
+tick := () -> { update_physics() }
 ```
 
 ### Return Type Hints
 
-Annotate the return type with `->` after the parameter list:
+Annotate the return type with `->` before the opening brace. For void returns, use `-> _`:
 
 ```
-add       := |a, b| -> int { a + b }
-log_event := |msg|  -> ()  { print(msg) }
+add       := (a, b) -> int { a + b }
+greet     := (name) -> str { "Hello ${name}" }
+log_event := (msg)  -> _   { print(msg) }
+tick      := ()     -> _   { update() }
 ```
 
-`-> ()` is the only way to express a void return. It maps directly to Rust's unit type `()`.
-There is no `-> none` form — `none` is a value, not a type annotation.
+`-> _` is the only way to express a void return. The `_` is the discard marker — consistent with
+its use in destructuring — and maps directly to Rust's unit type `()`.
+
+When no return type annotation is given, the compiler infers it from the body:
+
+```
+double := (x) -> { x * 2 }   // return type inferred as the type of x * 2
+```
+
+The three forms the parser sees after `->` are:
+
+| Form | Meaning |
+|---|---|
+| `-> _  {` | void return, body follows |
+| `-> TypeName {` | explicit return type, body follows |
+| `-> {` | inferred return type, body follows |
+
+All three are disambiguated by a single token of lookahead after `->`.
 
 ### Recursive Lambdas
 
@@ -245,17 +272,15 @@ treated as recursive — no `rec` keyword or special syntax is needed by the aut
 
 ```
 // this just works — compiler detects self-reference automatically
-fib := |n| {
-  if (n <= 1) do { n } else { fib(n-1) + fib(n-2) }
-}
+fib := (n) -> { if (n <= 1) do { n } else { fib(n-1) + fib(n-2) } }
 ```
 
 Mutual recursion also works at the top level, because stage one registers all top-level names
 before any body is resolved:
 
 ```
-is_even := |n| { if (n == 0) do { true }  else { is_odd(n-1) } }
-is_odd  := |n| { if (n == 0) do { false } else { is_even(n-1) } }
+is_even := (n) -> { if (n == 0) do { true }  else { is_odd(n-1) } }
+is_odd  := (n) -> { if (n == 0) do { false } else { is_even(n-1) } }
 ```
 
 The compiler emits a Rust `fn` for recursive lambdas and a Rust closure for non-recursive ones.
@@ -264,76 +289,61 @@ This distinction is completely invisible to the Homun author.
 ### Lambdas as Values
 
 ```
-transform := |x| { x * 2 }
-doubled   := @[1, 2, 3, 4].map(transform)
+transform := (x) -> { x * 2 }
+doubled   := @[1, 2, 3, 4] | map(transform)
 ```
 
 ---
 
-## Pipe Operator `.`
+## Pipe Operator `|`
 
-The `.` operator serves two distinct roles — **field access** and **pipe call** — with an explicit
-syntactic rule that makes them unambiguous at the grammar level:
-
-> **A `.` on the same line as its receiver is always a field access or a call on a lambda stored
-> in that field. A `.` that begins a new line (optionally preceded by whitespace) is always a pipe
-> call and desugars to passing the accumulated left-hand side as the first argument.**
-
-These two forms never overlap. The parser does not need to inspect types or perform lookahead
-beyond the newline boundary to resolve them.
-
-### Same-line `.` — Field Access and Lambda-field Calls
+The `|` operator pipes the left-hand value as the first argument into the right-hand call.
+It is an explicit operator — no whitespace sensitivity, no position rules. It can appear
+on the same line or be used to build multi-line chains. The two are completely equivalent.
 
 ```
-p.hp          // field read — reads the hp field of p
-p.name        // field read — reads the name field of p
-e.on_tick()   // lambda-field call — calls the lambda stored in field on_tick
-e.on_tick(x)  // lambda-field call — calls the lambda stored in field on_tick with argument x
-```
+// same-line pipe
+result := @[1, 2, 3] | map((x) -> { x * 2 })
 
-Even when a field name happens to match a global built-in (like `map`), the same-line rule applies:
-
-```
-Enemy := struct { map: str, hp: int }
-
-e.map         // field read — reads the map field, always
-e.map(f)      // lambda-field call — calls whatever lambda is stored in field map with f
-              // this is NEVER a pipe to the global map function
-```
-
-If you need to pipe a value into a global function, put the `.` on a new line.
-
-### New-line `.` — Pipe Calls
-
-A `.` at the start of a new line (after any indentation) is a pipe call. It desugars to passing
-the accumulated expression above it as the first argument to the right-hand side:
-
-```
-x
-  .map(f)        // desugars to: map(x, f)
-  .filter(pred)  // desugars to: filter(map(x, f), pred)
-  .reduce(g)     // desugars to: reduce(filter(map(x, f), pred), g)
-```
-
-Chains read naturally as a pipeline:
-
-```
+// multi-line pipe chain — identical semantics
 result := @[1, 2, 3, 4, 5]
-  .filter(|x| { x > 2 })
-  .map(|x| { x * 10 })
-  .reduce(|a, b| { a + b })
+  | filter((x) -> { x > 2 })
+  | map((x) -> { x * 10 })
+  | reduce((a, b) -> { a + b })
 ```
 
-The opening value (`@[1, 2, 3, 4, 5]`) and each chained `.step(...)` each occupy their own line.
-The entire chain is a single expression and the result is assigned with `:=` as normal.
+Each step desugars to a regular function call with the accumulated value inserted as the first argument:
+
+```
+// these are identical
+a | map(f) | filter(g)
+filter(map(a, f), g)
+```
+
+### Field Access — `.` (unchanged)
+
+`.` is always field access or a lambda-field call. There is no pipe meaning attached to `.` at all.
+Field access and pipe are now completely separate operators with no overlap and no positional rules.
+
+```
+p.hp          // field read
+e.on_tick()   // lambda-field call
+e.on_tick(x)  // lambda-field call with argument
+```
+
+To pipe into a global function, use `|`:
+
+```
+p.hp | clamp(0, 100)   // pipe hp value into clamp — NOT a field access
+```
 
 ### Summary
 
-| Form | Position | Meaning |
-|---|---|---|
-| `e.field` | same line | field read |
-| `e.field(args)` | same line | call lambda stored in field |
-| `.fn(args)` | new line | pipe call — desugars to `fn(receiver, args)` |
+| Operator | Meaning |
+|---|---|
+| `x.field` | field read |
+| `x.field(args)` | call lambda stored in field |
+| `x \| fn(args)` | pipe — desugars to `fn(x, args)` |
 
 ---
 
@@ -435,8 +445,7 @@ x[1..5, 2]   // [10, 30, 50]      — every other element
 ```
 
 Because slices are inclusive and 1-based, `[3..1, -1]` yields exactly three elements: the 3rd,
-2nd, and 1st — in that order. This differs from Python where `[3:1:-1]` is 0-based and
-exclusive-end.
+2nd, and 1st — in that order.
 
 ### Numeric Ranges
 
@@ -585,10 +594,14 @@ Multiple names can be bound simultaneously on the left side of `:=`. The right-h
 evaluated before any binding occurs, making swaps always safe. Use `_` to discard a value.
 
 ```
-a, b := b, a              // swap a and b
-_, second := get_pair()   // discard first, keep second
-x, y := y, x + y          // Fibonacci step
+a, b    := b, a              // swap a and b
+_, b    := get_pair()        // discard first, keep second
+x, y    := y, x + y          // Fibonacci step
+_, b, _ := get_triple()      // keep only middle value
 ```
+
+`_` in a destructuring pattern discards that position entirely — no binding is created and the
+value is dropped. This is consistent with how `_` is used everywhere in Homun as the discard marker.
 
 ---
 
@@ -626,7 +639,7 @@ Player := struct {
   speed: float
 }
 
-create_player := |n, h, s| -> Player {
+create_player := (n, h, s) -> Player {
   Player { name: n, hp: h, speed: s }
 }
 
@@ -647,7 +660,7 @@ print(pos.x)
 
 ### Field Mutation
 
-Fields are updated using `:=` with same-line dot access:
+Fields are updated using `:=` with dot access:
 
 ```
 p.hp    := p.hp - 10
@@ -678,7 +691,7 @@ Player := struct { name: str, hp: int, pos: Vec2 }
 // behavior struct — NOT RON compatible
 EnemyAI := struct {
   state:   str
-  on_tick: || -> ()    // lambda field disqualifies RON
+  on_tick: () -> _    // lambda field disqualifies RON
 }
 ```
 
@@ -808,7 +821,7 @@ These are provided by the engine runtime environment:
 | `keys(d)` | Keys of a dict as a list |
 | `values(d)` | Values of a dict as a list |
 | `zip(a, b)` | Pair two lists element-wise |
-| `map(col, f)` | Apply f to each element (also via new-line pipe `.map(f)`) |
+| `map(col, f)` | Apply f to each element — also via pipe: `col \| map(f)` |
 | `filter(col, f)` | Keep elements where f returns true |
 | `reduce(col, f)` | Fold a list using a binary lambda |
 | `floor(x)` | Floor of a float |
@@ -838,16 +851,17 @@ Homun compiles to idiomatic Rust. The naming conventions of Homun (`snake_case` 
 | Behavior struct | `struct` with `#[derive(Clone)]` |
 | Enum | `enum` |
 | `match` with `_` | `match` with `_` wildcard arm |
-| Same-line `.field` | field access on struct |
-| Same-line `.field(args)` | call lambda stored in field |
-| New-line `.fn(args)` | function call with receiver as first argument |
+| `x.field` | field access on struct |
+| `x.field(args)` | call lambda stored in field |
+| `x \| fn(args)` | function call with x as first argument |
 | String `${}` | `format!()` macro |
 | `and`, `or`, `not` | `&&`, `\|\|`, `!` |
 | `in`, `not in` | `.contains()` |
-| `-> ()` return | `()` unit type |
+| `-> _` return | `()` unit type |
 | `none` value | `Option::None` |
 | `p.field := v` | `let mut p = p; p.field = v;` |
 | `a, b := b, a` | `let (a, b) = (b, a);` |
+| `_, b := expr` | `let (_, b) = expr;` |
 | `load_ron(p) as T` | `ron::from_str::<T>(...)` with compile-time schema validation |
 | 1-based slice `[i..j]` | index arithmetic with bounds check |
 | Variable `snake_case` | Rust `snake_case` — no mangling |
@@ -863,13 +877,13 @@ x            := 42
 player_name  := "Aria"
 player_hp    := int(100)
 
-// Lambdas
-double := |x|    { x * 2 }
-greet  := |name| -> str { "Hi ${name}" }
-tick   := ||     -> ()  { update() }
+// Lambdas — braces always required
+double := (x)    -> { x * 2 }
+greet  := (name) -> str { "Hi ${name}" }
+tick   := ()     -> _   { update() }
 
 // Recursion — no special syntax
-fib := |n| { if (n <= 1) do { n } else { fib(n-1) + fib(n-2) } }
+fib := (n) -> { if (n <= 1) do { n } else { fib(n-1) + fib(n-2) } }
 
 // Operators
 x == 42           // equality
@@ -877,13 +891,16 @@ x != 0            // inequality
 "fire" in flags   // membership
 not "x" in flags  // non-membership
 
-// Pipe — new-line dot only
+// Pipe — explicit | operator
 @[1, 2, 3, 4, 5]
-  .filter(|x| { x > 2 })
-  .map(|x| { x * 10 })
-  .reduce(|a, b| { a + b })
+  | filter((x) -> { x > 2 })
+  | map((x) -> { x * 10 })
+  | reduce((a, b) -> { a + b })
 
-// Field access and lambda-field calls — same-line dot only
+// Same-line pipe also valid
+@[1, 2, 3] | map((x) -> { x * 2 })
+
+// Field access and lambda-field calls — dot only
 p.hp              // field read
 e.on_tick()       // call lambda stored in field on_tick
 e.on_tick(delta)  // call lambda stored in field on_tick with argument
@@ -926,13 +943,15 @@ items[1..3]       // first three elements
 items[3..1, -1]   // last three, reversed
 
 // Destructuring / swap
-a, b   := b, a
-_, val := get_pair()
+a, b      := b, a           // swap
+_, b      := get_pair()     // discard first, keep second
+_, b, _   := get_triple()   // keep only middle value
+x, y      := y, x + y       // Fibonacci step
 
 // Struct (PascalCase recommended)
 Vec2 := struct { x: float, y: float }
 p    := Vec2 { x: 1.0, y: 2.0 }
-p.x  := 5.0               // field mutation (same-line dot)
+p.x  := 5.0               // field mutation
 
 // Enum + match with wildcard
 Dir := enum { Up, Down, Left, Right }
