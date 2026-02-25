@@ -4,21 +4,15 @@ Homun is a scripting layer for a Rust-based ECS game engine. Every valid Homun p
 For performance-critical code and architecture, you write Rust directly. 
 Homun gives game designers a lighter syntax for gameplay scripts without writing raw Rust.
 
+Homun is not a Hindley-Milner language. It is a template-instantiation language.
+Homun uses implicit template-style generics with monomorphization that compiler fill `<T, U>` at first pass.
+
+
 ---
 
 ## Examples
 
 ```
-// Two Sum
-two_sum := (nums: @[], target) -> @[] {
-  seen := @{}
-  for i in range(len(nums)) do {
-    comp := target - nums[i]
-    if (comp in seen) do { break => @[seen[comp], i] }
-    seen[nums[i]] := i
-  }
-}
-
 // Valid Parentheses
 is_valid := (s) -> {
   stack := @[]
@@ -54,12 +48,21 @@ dfs := (graph, node, visited) -> {
   visited
 }
 
-// Polymorphic — type inferred at call site
-first := (items) -> { items[0] }
 
-// One-liners
-is_palindrome := (s) -> { s == s[::-1] }
-fib := (n) -> { if (n <= 1) do { n } else { fib(n-1) + fib(n-2) } }
+// Pattern Match
+fizz_buzz := (n: int) -> @[str] {
+  result := @[]
+  for i in range(1, n+1) do {
+    value := match (i % 15, i % 3, i % 5) {
+      (0, _, _) => "FizzBuzz"
+      (_, 0, _) => "Fizz"
+      (_, _, 0) => "Buzz"
+      _         => str(i)
+    }
+    result := result + @[value]
+  }
+  result
+}
 ```
 
 ---
@@ -316,17 +319,21 @@ while (enemies > 0) do { attack_nearest() }
 
 ### `break => value` — Early Return
 
-`break` exits a loop. `break => value` exits the **enclosing lambda** with a value.
+`break` exits a loop. `break => value` exits with a value.
 
 ```
-clamp_hp := (hp) -> int {
-  if (hp < 0)   do { break => 0 }
-  if (hp > 100) do { break => 100 }
-  hp
+// Two Sum
+two_sum := (nums: @[], target) -> @[] {
+  seen := @{}
+  for i in range(len(nums)) do {
+    comp := target - nums[i]
+    if (comp in seen) do { break => @[seen[comp], i] }
+    seen[nums[i]] := i
+  }
 }
 ```
 
-`break => _` exits a void (`-> _`) lambda early.
+`break => _` exits a void.
 
 ---
 
@@ -411,6 +418,27 @@ Only data structs are RON-compatible. `save_ron` on a behavior struct is a compi
 
 ---
 
-## License
+## Compiler Behavior
+```
+fib := (n) -> { if (n <= 1) do { n } else { fib(n-1) + fib(n-2) } }
+// after 1st pass:
+fib := rec(n) -> { if (n <= 1) do { n } else { fib(n-1) + fib(n-2) } }
+```
 
-Homun is part of the game engine runtime. See `LICENSE` for terms.
+```
+f := (x) -> { g(x) }  // ❌ compile error, g not exist before f
+g := (y) -> { f(y) }  
+```
+
+```
+identity := (x) -> { x }
+
+f := identity
+a := f(1)
+b := f("hi")   // ❌ compile error
+
+nums := @[int](1,2,3)    
+empty := @[]              // ❌ compile error, never used
+
+
+```
