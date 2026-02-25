@@ -35,7 +35,7 @@ codegenTopLevel i s = case s of
   SStructDef name fields ->
     let fieldLines = map (codegenField (i+1)) fields
     in unlines $
-         [ "#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]"
+         [ "#[derive(Debug, Clone)]"
          , "pub struct " ++ name ++ " {"
          ] ++ fieldLines ++
          [ "}" ]
@@ -77,7 +77,7 @@ codegenVariant i (VariantDef name (Just ty)) =
 codegenFn :: Indent -> Name -> [Param] -> Maybe TypeExpr -> Maybe TypeExpr
           -> [Stmt] -> Expr -> Bool -> String
 codegenFn i name params retTy voidMark stmts finalExpr isRec =
-  let paramStr = intercalate ", " (map codegenParam params)
+  let paramStr = codegenParams params
       retStr   = case voidMark of
                    Just _  -> ""
                    Nothing -> case retTy of
@@ -94,21 +94,43 @@ codegenFn i name params retTy voidMark stmts finalExpr isRec =
 
 codegenParam :: Param -> String
 codegenParam (Param name Nothing) =
-  -- Use generic T for unknown types
-  name ++ ": impl std::fmt::Debug + Clone"
+  -- Will be replaced by T, U, V... from inferGenerics; placeholder here
+  name ++ ": _"
 codegenParam (Param "_" _) = "_: _"
 codegenParam (Param name (Just ty)) =
   name ++ ": " ++ codegenType ty
 
--- Heuristic: assign T, U, V... for params that have no type annotation
+-- Assign T, U, V... to untyped params; return generic constraints list
 inferGenerics :: [Param] -> Maybe TypeExpr -> [String]
-inferGenerics params retTy =
+inferGenerics params _retTy =
   let untyped = filter (\(Param _ t) -> case t of Nothing -> True; _ -> False) params
-  in take (length untyped) ["T","U","V","W","X","Y","Z"]
+      letters = take (length untyped) ["T","U","V","W","X","Y","Z"]
+  in map (++ ": Clone") letters
+
+-- Build param string substituting T, U, V for untyped params
+codegenParams :: [Param] -> String
+codegenParams params =
+  let letters = ["T","U","V","W","X","Y","Z"]
+      (ps, _) = foldl assign ([], letters) params
+  in intercalate ", " (reverse ps)
+  where
+    assign (acc, ls) (Param name Nothing) =
+      let l = head ls
+      in (( name ++ ": " ++ l) : acc, tail ls)
+    assign (acc, ls) (Param "_" _) = ("_: _" : acc, ls)
+    assign (acc, ls) (Param name (Just ty)) =
+      ((name ++ ": " ++ codegenType ty) : acc, ls)
 
 -- ─────────────────────────────────────────
 -- Statements inside functions
 -- ─────────────────────────────────────────
+
+-- | Detect re-bind: name appears in the generated RHS (simple substring check)
+nameInRhs :: String -> String -> Bool
+nameInRhs name rhs = name `isPrefixOf` rhs
+                  || (" " ++ name) `isInfixOf` rhs
+  where isInfixOf needle haystack = any (isPrefixOf needle) (tails haystack)
+        tails [] = []; tails s@(_:xs) = s : tails xs
 
 codegenStmt :: Indent -> Stmt -> String
 codegenStmt i s = case s of
@@ -116,7 +138,7 @@ codegenStmt i s = case s of
     case expr of
       ELambda params retTy voidMark stmts finalExpr ->
         -- inner function / closure
-        let paramStr = intercalate ", " (map codegenParam params)
+        let paramStr = codegenParams params
             retStr   = maybe "" ((" -> " ++) . codegenType) retTy
             bodyLines = map (codegenStmt (i+1)) stmts
                         ++ [ind (i+1) ++ codegenExpr (i+1) finalExpr]
@@ -158,6 +180,13 @@ codegenExpr i expr = case expr of
   ENone     -> "None"
   EString s -> codegenString s
   EVar "_"  -> "_"
+  EVar "str"    -> "str_of"
+  EVar "len"    -> "len"
+  EVar "range"  -> "range"
+  EVar "filter" -> "filter"
+  EVar "map"    -> "map"
+  EVar "reduce" -> "reduce"
+  EVar "print"  -> "println!"
   EVar n    -> n
 
   EField e field ->
@@ -169,7 +198,7 @@ codegenExpr i expr = case expr of
   ESlice e start end step ->
     -- Rust doesn't have Python slices natively; emit a helper call
     let startS = maybe "0" (codegenExpr i) start
-        endS   = maybe "usize::MAX" (codegenExpr i) end
+        endS   = maybe "i64::MAX" (codegenExpr i) end
         stepS  = maybe "1" (codegenExpr i) step
     in "homun_slice(&" ++ codegenExpr i e ++ ", " ++ startS ++ ", " ++ endS ++ ", " ++ stepS ++ ")"
 
@@ -234,6 +263,8 @@ codegenExpr i expr = case expr of
                     ++ [ind (i+1) ++ codegenExpr (i+1) finalExpr]
     in "|" ++ paramStr ++ "| {\n" ++ unlines bodyLines ++ ind i ++ "}"
 
+  ECall (EVar "print") args ->
+    "println!(" ++ intercalate ", " (map (codegenExpr i) args) ++ ")"
   ECall fn args ->
     codegenExpr i fn ++ "(" ++ intercalate ", " (map (codegenExpr i) args) ++ ")"
 
@@ -265,11 +296,13 @@ codegenExpr i expr = case expr of
   EFor var iter stmts finalExpr ->
     let varS  = var
         iterS = codegenExpr i iter
-        bodyLines = map (codegenStmt (i+1)) stmts
-                    ++ case finalExpr of
-                         Just e  -> [ind (i+1) ++ codegenExpr (i+1) e ++ ";"]
-                         Nothing -> []
-    in "for " ++ varS ++ " in " ++ iterS ++ ".iter() {\n"
+        -- Suppress trivial `true;` from splitBlock when last stmt was a SBind
+        finalLine = case finalExpr of
+          Just (EBool True) -> []
+          Just e            -> [ind (i+1) ++ codegenExpr (i+1) e ++ ";"]
+          Nothing           -> []
+        bodyLines = map (codegenStmt (i+1)) stmts ++ finalLine
+    in "for " ++ varS ++ " in " ++ iterS ++ " {\n"
        ++ unlines bodyLines ++ ind i ++ "}"
 
   EWhile cond stmts finalExpr ->
@@ -281,7 +314,7 @@ codegenExpr i expr = case expr of
     in "while " ++ condS ++ " {\n" ++ unlines bodyLines ++ ind i ++ "}"
 
   EBreak Nothing  -> "break"
-  EBreak (Just e) -> "break " ++ codegenExpr i e
+  EBreak (Just e) -> "return " ++ codegenExpr i e
 
   EContinue -> "continue"
 
