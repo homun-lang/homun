@@ -1,0 +1,24 @@
+// ─── examples/fizzbuzz.hom ──────────────────────────────────────
+// Demonstrates: structs, enums, match, range, string interpolation
+
+Direction := enum { North, South, East, West }
+
+Player := struct { name: str, hp: int, speed: float }
+
+fizz_buzz := (n: int) -> @[str] {
+  result := @[]
+  for i in range(n) do {
+    value := match (i % 15, i % 3, i % 5) {
+      (0, _, _) => "FizzBuzz"
+      (_, 0, _) => "Fizz"
+      (_, _, 0) => "Buzz"
+      _         => str(i)
+    }
+    result := result + @[value]
+  }
+  result
+}
+
+greet := (p: Player) -> str {
+  "Hello, ${p.name}! HP: ${p.hp}"
+}

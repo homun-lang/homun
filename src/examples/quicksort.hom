@@ -1,0 +1,11 @@
+// ─── examples/quicksort.hom ─────────────────────────────────────
+// Demonstrates: recursion, pipe, filter, collections, break => value
+
+quicksort := (arr) -> {
+  if (len(arr) <= 1) do { break => arr }
+  pivot := arr[0]
+  rest  := arr[1:]
+  left  := rest | filter((x) -> { x <= pivot })
+  right := rest | filter((x) -> { x > pivot })
+  quicksort(left) + @[pivot] + quicksort(right)
+}
