@@ -48,13 +48,13 @@ jobs:
             --output type=local,dest=./out .
 
       - name: Rename binary
-        run: mv out/${{ matrix.binary }} "${{ matrix.artifact }}-${{ github.event.workflow_run.head_branch }}${{ matrix.ext }}"
+        run: mv out/${{ matrix.binary }} "${{ matrix.artifact }}${{ matrix.ext }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}-${{ github.event.workflow_run.head_branch }}${{ matrix.ext }}
-          path: ${{ matrix.artifact }}-${{ github.event.workflow_run.head_branch }}${{ matrix.ext }}
+          name: ${{ matrix.artifact }}${{ matrix.ext }}
+          path: ${{ matrix.artifact }}${{ matrix.ext }}
 
   build-wasm:
     if: >
@@ -77,13 +77,13 @@ jobs:
             --output type=local,dest=./out .
 
       - name: Package WASM
-        run: tar czf "homunc-wasm-${{ github.event.workflow_run.head_branch }}.tar.gz" -C out .
+        run: tar czf "homunc-wasm.tar.gz" -C out .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: homunc-wasm-${{ github.event.workflow_run.head_branch }}.tar.gz
-          path: homunc-wasm-${{ github.event.workflow_run.head_branch }}.tar.gz
+          name: homunc-wasm.tar.gz
+          path: homunc-wasm.tar.gz
 
   release:
     runs-on: ubuntu-latest
