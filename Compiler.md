@@ -1,6 +1,6 @@
-# homunc — Homun → Rust Compiler (Haskell)
+# homunc — Homun → Rust Compiler
 
-A text-to-text transpiler that compiles the **Homun** scripting language into **Rust** source code. Written entirely in Haskell with zero external dependencies beyond `base` and `containers`.
+A text-to-text transpiler that compiles the **Homun** scripting language into **Rust** source code. Written entirely in Rust with zero external dependencies.
 
 ---
 
@@ -11,23 +11,23 @@ Source (.hom)
     │
     ▼
 ┌─────────┐
-│  Lexer  │  src/Lexer.hs   — tokenises Homun source into [Token]
+│  Lexer  │  src/lexer.rs   — tokenises Homun source into Vec<Token>
 └────┬────┘
-     │ [Token]
+     │ Vec<Token>
      ▼
 ┌─────────┐
-│  Parser │  src/Parser.hs  — recursive-descent Pratt parser → AST
+│  Parser │  src/parser.rs  — recursive-descent Pratt parser → AST
 └────┬────┘
      │ Program (AST)
      ▼
 ┌──────────┐
-│   Sema   │  src/Sema.hs   — semantic analysis:
+│   Sema   │  src/sema.rs   — semantic analysis:
 └────┬─────┘    • snake_case enforcement
      │           • recursion detection & marking
      │ Program   • mutual recursion error
      ▼           • undefined reference check
 ┌──────────┐
-│ Codegen  │  src/Codegen.hs — walks AST, emits Rust text
+│ Codegen  │  src/codegen.rs — walks AST, emits Rust text
 └────┬─────┘
      │ Rust source (.rs)
      ▼
@@ -39,16 +39,8 @@ Source (.hom)
 ## Build
 
 ```bash
-# Requires GHC >= 9.2 and cabal >= 3.0
-cd homun-compiler
-cabal build
-```
-
-Or compile directly with GHC:
-
-```bash
-cd homun-compiler/src
-ghc -O2 Main.hs Lexer.hs AST.hs Parser.hs Sema.hs Codegen.hs -o homunc
+# Requires Rust >= 1.70
+cargo build --release
 ```
 
 ---
@@ -57,10 +49,10 @@ ghc -O2 Main.hs Lexer.hs AST.hs Parser.hs Sema.hs Codegen.hs -o homunc
 
 ```bash
 # Compile to stdout
-./homunc examples/quicksort.hom
+./target/release/homunc examples/quicksort.hom
 
 # Compile to file
-./homunc examples/fizzbuzz.hom -o output.rs
+./target/release/homunc examples/fizzbuzz.hom -o output.rs
 
 # Then compile the Rust
 rustc output.rs -o program
@@ -139,19 +131,20 @@ The `Sema` pass enforces Homun's rules **before** codegen:
 ## File Structure
 
 ```
-homun-compiler/
-├── homunc.cabal
-├── README.md
+Homun-Lang/
+├── Cargo.toml
+├── Compiler.md
+├── Dockerfile           — cross-compilation (linux x86_64, aarch64, windows)
+├── Dockerfile.wasm      — WASM build (wasm32-wasi)
+├── runtime/
+│   └── builtin.rs       — runtime helpers (included in compiler output)
 └── src/
-    ├── Main.hs      — CLI entry point, pipeline orchestration, Rust preamble
-    ├── Lexer.hs     — tokeniser
-    ├── AST.hs       — abstract syntax tree types
-    ├── Parser.hs    — recursive-descent parser
-    ├── Sema.hs      — semantic analysis
-    └── Codegen.hs   — Rust code emitter
-examples/
-    ├── quicksort.hom
-    └── fizzbuzz.hom
+    ├── main.rs          — CLI entry point, pipeline orchestration, Rust preamble
+    ├── lexer.rs         — tokeniser
+    ├── ast.rs           — abstract syntax tree types
+    ├── parser.rs        — recursive-descent parser
+    ├── sema.rs          — semantic analysis
+    └── codegen.rs       — Rust code emitter
 ```
 
 ---
@@ -206,7 +199,7 @@ resolve := (file: str, visited: @(str), emitted: @(str)) -> str {
 
 | Component | Change |
 |---|---|
-| **Main.hs** | Add file resolver: check if `foo.hom` exists for each `use foo` |
-| **Main.hs** | Implement dependency graph traversal with cycle detection + dedup |
-| **Codegen.hs** | `use foo` when `foo.hom` exists → inline compiled output instead of `use foo;` |
-| **Sema.hs** | Collect exported names from included files to avoid false "undefined" errors |
+| **main.rs** | Add file resolver: check if `foo.hom` exists for each `use foo` |
+| **main.rs** | Implement dependency graph traversal with cycle detection + dedup |
+| **codegen.rs** | `use foo` when `foo.hom` exists → inline compiled output instead of `use foo;` |
+| **sema.rs** | Collect exported names from included files to avoid false "undefined" errors |

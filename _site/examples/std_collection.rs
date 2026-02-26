@@ -2,7 +2,7 @@
 // Homun Collection Library — included by std.rs
 // ============================================================
 
-use std::collections::HashSet;
+// HashSet is already imported by builtin.rs
 
 pub fn sorted<T: Clone + Ord>(v: &[T]) -> Vec<T> {
     let mut out = v.to_vec(); out.sort(); out
