@@ -38,6 +38,9 @@ fn codegen_top_level(i: Indent, stmt: &Stmt) -> String {
         Stmt::Use(path) if path.len() == 1 && path[0] == "std" => {
             "include!(\"std.rs\");".to_string()
         }
+        Stmt::Use(path) if path.len() == 1 && path[0] == "ext" => {
+            "include!(\"ext.rs\");".to_string()
+        }
         Stmt::Use(path) => {
             format!("use {};", path.join("::"))
         }
@@ -203,6 +206,9 @@ fn cg_stmt(i: Indent, scope: &Scope, stmt: &Stmt) -> (String, Scope) {
         }
         Stmt::Use(path) if path.len() == 1 && path[0] == "std" => {
             (format!("{}include!(\"std.rs\");", ind(i)), scope.clone())
+        }
+        Stmt::Use(path) if path.len() == 1 && path[0] == "ext" => {
+            (format!("{}include!(\"ext.rs\");", ind(i)), scope.clone())
         }
         Stmt::Use(path) => (format!("{}use {};", ind(i), path.join("::")), scope.clone()),
         Stmt::StructDef(name, fields) => {

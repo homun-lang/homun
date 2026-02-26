@@ -173,7 +173,7 @@ identity("hello")  // str version
 
 ### Recursion
 
-Auto-detected — no `rec` keyword. Mutual recursion is forbidden (compile error).
+Auto-detected — hidden `rec` mind.
 
 ```
 fib := (n) -> { if (n <= 1) do { n } else { fib(n-1) + fib(n-2) } }
@@ -412,10 +412,6 @@ Only data structs are RON-compatible. `save_ron` on a behavior struct is a compi
 ---
 
 ## Compiler Behavior
-```
-f := (x) -> { g(x) }  // ❌ compile error, g not exist before f
-g := (y) -> { f(y) }  
-```
 
 ```
 identity := (x) -> { x }

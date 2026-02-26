@@ -4,13 +4,12 @@
 /// 2. Undefined reference check for top-level bindings
 /// 3. Mutual recursion detection
 use crate::ast::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SemaError {
     BadCasing(Name),
-    MutualRec(Name, Name),
     Undefined(Name),
 }
 
@@ -18,11 +17,6 @@ impl fmt::Display for SemaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SemaError::BadCasing(n) => write!(f, "SEMA ERROR: '{}' must be snake_case", n),
-            SemaError::MutualRec(a, b) => write!(
-                f,
-                "SEMA ERROR: mutual recursion between '{}' and '{}' is forbidden",
-                a, b
-            ),
             SemaError::Undefined(n) => write!(f, "SEMA ERROR: undefined reference '{}'", n),
         }
     }
@@ -36,39 +30,58 @@ pub fn analyze_program_with_imports(
     prog: &Program,
     imported_names: &HashSet<String>,
 ) -> Result<(), Vec<SemaError>> {
+    // Builtins — always available (provided by builtin.rs preamble).
     let builtins: HashSet<String> = [
-        "print", "len", "range", "str", "int", "float", "bool", "filter", "map", "reduce",
-        "load_ron", "save_ron", "clamp", "update", "idle", "attack", "die", "warn", "recover",
+        "print", "str", "int", "float", "bool",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+
+    // `use std` provides these (range, len, filter, map, reduce, etc.).
+    let std_names: HashSet<String> = [
+        "len", "range", "filter", "map", "reduce",
+        "load_ron", "save_ron",
+        "abs", "min", "max", "clamp",
+        "sorted", "reversed", "enumerate", "zip", "flatten",
+        "any", "all", "count", "unique", "index_of",
+        "split", "join", "trim", "trim_start", "trim_end",
+        "starts_with", "ends_with", "replace", "to_upper", "to_lower",
+        "chars", "find", "contains", "repeat", "substr",
+        "strip_prefix", "strip_suffix", "lines", "is_empty",
+        "is_digit", "is_alpha", "is_alnum", "is_upper", "is_lower",
+        "pad_left", "pad_right",
         "std",
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
 
+    // Check if program has `use std` or `use ext`.
+    let has_use_std = prog.iter().any(|s| matches!(s, Stmt::Use(p) if p.len() == 1 && p[0] == "std"));
+    let has_use_ext = prog.iter().any(|s| matches!(s, Stmt::Use(p) if p.len() == 1 && p[0] == "ext"));
+
     let top_names: HashSet<String> = prog
         .iter()
-        .filter_map(|s| {
-            if let Stmt::Bind(n, _) = s {
-                Some(n.clone())
-            } else {
-                None
-            }
+        .filter_map(|s| match s {
+            Stmt::Bind(n, _) | Stmt::StructDef(n, _) | Stmt::EnumDef(n, _) => Some(n.clone()),
+            _ => None,
         })
         .collect();
 
-    let env0: HashSet<String> = builtins
-        .union(&top_names)
-        .cloned()
-        .collect::<HashSet<_>>()
-        .union(imported_names)
-        .cloned()
-        .collect();
+    let mut env0: HashSet<String> = builtins.union(&top_names).cloned().collect();
+    env0 = env0.union(imported_names).cloned().collect();
+    if has_use_std {
+        env0 = env0.union(&std_names).cloned().collect();
+    }
 
     let mut errs = Vec::new();
-    errs.extend(check_stmts(&env0, prog));
+    // When `use ext` is present, skip undefined-reference checks
+    // because ext provides many functions sema can't introspect.
+    if !has_use_ext {
+        errs.extend(check_stmts(&env0, prog));
+    }
     errs.extend(check_casing_all(prog));
-    errs.extend(check_mutual_rec(prog));
-
     if errs.is_empty() {
         Ok(())
     } else {
@@ -290,121 +303,3 @@ fn stmts_bound(env: &HashSet<String>, stmts: &[Stmt]) -> HashSet<String> {
     env
 }
 
-// ─── 3. Mutual recursion detection ──────────────────────────
-
-fn check_mutual_rec(prog: &Program) -> Vec<SemaError> {
-    let mut call_graph: HashMap<String, Vec<String>> = HashMap::new();
-    for s in prog {
-        if let Stmt::Bind(n, Expr::Lambda { final_expr, .. }) = s {
-            let calls = free_calls_in(n, final_expr);
-            call_graph.insert(n.clone(), calls);
-        }
-    }
-    let mut errs = Vec::new();
-    for n in call_graph.keys() {
-        let callees = &call_graph[n];
-        for c in callees {
-            if let Some(their_calls) = call_graph.get(c) {
-                if their_calls.contains(n) {
-                    errs.push(SemaError::MutualRec(n.clone(), c.clone()));
-                }
-            }
-        }
-    }
-    errs
-}
-
-fn free_calls_in(self_name: &str, expr: &Expr) -> Vec<String> {
-    collect_calls(expr)
-        .into_iter()
-        .filter(|n| n != self_name)
-        .collect()
-}
-
-fn collect_calls(expr: &Expr) -> Vec<String> {
-    match expr {
-        Expr::Call(f, args) => {
-            let mut calls = Vec::new();
-            if let Expr::Var(n) = f.as_ref() {
-                calls.push(n.clone());
-            }
-            for a in args {
-                calls.extend(collect_calls(a));
-            }
-            calls
-        }
-        Expr::BinOp(_, a, b) | Expr::Pipe(a, b) => {
-            let mut c = collect_calls(a);
-            c.extend(collect_calls(b));
-            c
-        }
-        Expr::UnOp(_, a) => collect_calls(a),
-        Expr::If(c, ts, te, ec) => {
-            let mut calls = collect_calls(c);
-            for s in ts {
-                calls.extend(collect_stmt_calls(s));
-            }
-            calls.extend(collect_calls(te));
-            if let Some((es, ee)) = ec {
-                for s in es {
-                    calls.extend(collect_stmt_calls(s));
-                }
-                calls.extend(collect_calls(ee));
-            }
-            calls
-        }
-        Expr::Match(sc, arms) => {
-            let mut calls = collect_calls(sc);
-            for arm in arms {
-                calls.extend(collect_calls(&arm.body));
-            }
-            calls
-        }
-        Expr::For(_, it, ss, fe) => {
-            let mut calls = collect_calls(it);
-            for s in ss {
-                calls.extend(collect_stmt_calls(s));
-            }
-            if let Some(e) = fe {
-                calls.extend(collect_calls(e));
-            }
-            calls
-        }
-        Expr::While(c, ss, fe) => {
-            let mut calls = collect_calls(c);
-            for s in ss {
-                calls.extend(collect_stmt_calls(s));
-            }
-            if let Some(e) = fe {
-                calls.extend(collect_calls(e));
-            }
-            calls
-        }
-        Expr::Lambda {
-            stmts, final_expr, ..
-        } => {
-            let mut calls = Vec::new();
-            for s in stmts {
-                calls.extend(collect_stmt_calls(s));
-            }
-            calls.extend(collect_calls(final_expr));
-            calls
-        }
-        Expr::Block(ss, fe) => {
-            let mut calls = Vec::new();
-            for s in ss {
-                calls.extend(collect_stmt_calls(s));
-            }
-            calls.extend(collect_calls(fe));
-            calls
-        }
-        _ => vec![],
-    }
-}
-
-fn collect_stmt_calls(stmt: &Stmt) -> Vec<String> {
-    match stmt {
-        Stmt::Bind(_, e) | Stmt::Expression(e) => collect_calls(e),
-        _ => vec![],
-    }
-}
