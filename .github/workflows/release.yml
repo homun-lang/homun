@@ -22,12 +22,15 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             artifact: homunc-linux-x86_64
             binary: homunc
+            ext: ""
           - target: aarch64-unknown-linux-gnu
             artifact: homunc-linux-aarch64
             binary: homunc
+            ext: ""
           - target: x86_64-pc-windows-gnu
-            artifact: homunc-windows-x86_64.exe
+            artifact: homunc-windows-x86_64
             binary: homunc.exe
+            ext: ".exe"
 
     steps:
       - name: Checkout
@@ -44,13 +47,13 @@ jobs:
             --output type=local,dest=./out .
 
       - name: Rename binary
-        run: mv out/${{ matrix.binary }} ${{ matrix.artifact }}
+        run: mv out/${{ matrix.binary }} "${{ matrix.artifact }}-${{ github.event.workflow_run.head_branch }}${{ matrix.ext }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          name: ${{ matrix.artifact }}-${{ github.event.workflow_run.head_branch }}${{ matrix.ext }}
+          path: ${{ matrix.artifact }}-${{ github.event.workflow_run.head_branch }}${{ matrix.ext }}
 
   build-wasm:
     if: >
@@ -72,13 +75,13 @@ jobs:
             --output type=local,dest=./out .
 
       - name: Package WASM
-        run: tar czf homunc-wasm.tar.gz -C out .
+        run: tar czf "homunc-wasm-${{ github.event.workflow_run.head_branch }}.tar.gz" -C out .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: homunc-wasm.tar.gz
-          path: homunc-wasm.tar.gz
+          name: homunc-wasm-${{ github.event.workflow_run.head_branch }}.tar.gz
+          path: homunc-wasm-${{ github.event.workflow_run.head_branch }}.tar.gz
 
   release:
     runs-on: ubuntu-latest
