@@ -153,3 +153,60 @@ examples/
     ├── quicksort.hom
     └── fizzbuzz.hom
 ```
+
+---
+
+## TODO: Multi-file `use` (Text Inclusion)
+
+Support `use` for other `.hom` files via textual inclusion (like C `#include`).
+
+### Behavior
+
+```
+// main.hom
+use math        // finds math.hom, compiles it, inlines the Rust output
+use utils       // finds utils.hom, compiles it, inlines the Rust output
+```
+
+- `use foo` → compiler looks for `foo.hom` in the same directory
+- If found: compile `foo.hom` → inline the resulting Rust into the output
+- If not found: fall through to existing behavior (`use foo;` as Rust import)
+- `use std` remains special-cased → `include!("std.rs");`
+
+### Dependency Resolution
+
+The compiler must resolve the dependency graph before compilation:
+
+1. **Circular dependency detection** — `a.hom use b.hom, b.hom use a.hom` → compile error
+2. **Include guard (deduplicate)** — if `a.hom` uses `b.hom` and `b.hom` uses `c.hom`, the output contains only one copy of `c.hom` (like C header guards / `#pragma once`)
+3. **Topological sort** — compile in dependency order (leaves first)
+
+### Algorithm
+
+```
+resolve := (file: str, visited: @(str), emitted: @(str)) -> str {
+  if (file in visited and not file in emitted) do {
+    break => "ERROR: circular dependency on ${file}"
+  }
+  if (file in emitted) do { break => "" }
+  visited := visited + @(file)
+  output := ""
+  for dep in parse_uses(file) do {
+    if (exists("${dep}.hom")) do {
+      output := output + resolve("${dep}.hom", visited, emitted)
+    }
+  }
+  emitted := emitted + @(file)
+  output := output + codegen(file)
+  output
+}
+```
+
+### Changes Required
+
+| Component | Change |
+|---|---|
+| **Main.hs** | Add file resolver: check if `foo.hom` exists for each `use foo` |
+| **Main.hs** | Implement dependency graph traversal with cycle detection + dedup |
+| **Codegen.hs** | `use foo` when `foo.hom` exists → inline compiled output instead of `use foo;` |
+| **Sema.hs** | Collect exported names from included files to avoid false "undefined" errors |

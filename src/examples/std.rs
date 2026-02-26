@@ -50,3 +50,9 @@ macro_rules! reduce {
         ($v).into_iter().reduce($f)
     };
 }
+
+// ── Sub-libraries ───────────────────────────────────────────
+
+include!("std_str.rs");
+include!("std_math.rs");
+include!("std_collection.rs");
