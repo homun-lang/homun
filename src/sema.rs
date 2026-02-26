@@ -31,26 +31,60 @@ pub fn analyze_program_with_imports(
     imported_names: &HashSet<String>,
 ) -> Result<(), Vec<SemaError>> {
     // Builtins — always available (provided by builtin.rs preamble).
-    let builtins: HashSet<String> = [
-        "print", "str", "int", "float", "bool",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
+    let builtins: HashSet<String> = ["print", "str", "int", "float", "bool"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
     // `use std` provides these (range, len, filter, map, reduce, etc.).
     let std_names: HashSet<String> = [
-        "len", "range", "filter", "map", "reduce",
-        "load_ron", "save_ron",
-        "abs", "min", "max", "clamp",
-        "sorted", "reversed", "enumerate", "zip", "flatten",
-        "any", "all", "count", "unique", "index_of",
-        "split", "join", "trim", "trim_start", "trim_end",
-        "starts_with", "ends_with", "replace", "to_upper", "to_lower",
-        "chars", "find", "contains", "repeat", "substr",
-        "strip_prefix", "strip_suffix", "lines", "is_empty",
-        "is_digit", "is_alpha", "is_alnum", "is_upper", "is_lower",
-        "pad_left", "pad_right",
+        "len",
+        "range",
+        "filter",
+        "map",
+        "reduce",
+        "load_ron",
+        "save_ron",
+        "abs",
+        "min",
+        "max",
+        "clamp",
+        "sorted",
+        "reversed",
+        "enumerate",
+        "zip",
+        "flatten",
+        "any",
+        "all",
+        "count",
+        "unique",
+        "index_of",
+        "split",
+        "join",
+        "trim",
+        "trim_start",
+        "trim_end",
+        "starts_with",
+        "ends_with",
+        "replace",
+        "to_upper",
+        "to_lower",
+        "chars",
+        "find",
+        "contains",
+        "repeat",
+        "substr",
+        "strip_prefix",
+        "strip_suffix",
+        "lines",
+        "is_empty",
+        "is_digit",
+        "is_alpha",
+        "is_alnum",
+        "is_upper",
+        "is_lower",
+        "pad_left",
+        "pad_right",
         "std",
     ]
     .iter()
@@ -58,8 +92,12 @@ pub fn analyze_program_with_imports(
     .collect();
 
     // Check if program has `use std` or `use ext`.
-    let has_use_std = prog.iter().any(|s| matches!(s, Stmt::Use(p) if p.len() == 1 && p[0] == "std"));
-    let has_use_ext = prog.iter().any(|s| matches!(s, Stmt::Use(p) if p.len() == 1 && p[0] == "ext"));
+    let has_use_std = prog
+        .iter()
+        .any(|s| matches!(s, Stmt::Use(p) if p.len() == 1 && p[0] == "std"));
+    let has_use_ext = prog
+        .iter()
+        .any(|s| matches!(s, Stmt::Use(p) if p.len() == 1 && p[0] == "ext"));
 
     let top_names: HashSet<String> = prog
         .iter()
@@ -302,4 +340,3 @@ fn stmts_bound(env: &HashSet<String>, stmts: &[Stmt]) -> HashSet<String> {
     }
     env
 }
-

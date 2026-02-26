@@ -19,8 +19,6 @@ pub struct ResolvedFile {
 pub struct ResolvedProgram {
     /// Compiled fragments in topological order (leaves first).
     pub files: Vec<ResolvedFile>,
-    /// Set of module names that were resolved as .hom files.
-    pub resolved_names: HashSet<String>,
 }
 
 /// Three-color DFS state for cycle detection.
@@ -119,8 +117,7 @@ impl Resolver {
                 })?;
 
                 // Codegen, skipping resolved .hom use statements.
-                let rust_code =
-                    codegen::codegen_program_with_resolved(&ast, &self.resolved_names);
+                let rust_code = codegen::codegen_program_with_resolved(&ast, &self.resolved_names);
 
                 // Collect exports: top-level binds, structs, enums.
                 let exports: HashSet<String> = ast
@@ -155,6 +152,5 @@ pub fn resolve(entry_path: &Path) -> Result<ResolvedProgram, String> {
     resolver.resolve_file(entry_path)?;
     Ok(ResolvedProgram {
         files: resolver.files,
-        resolved_names: resolver.resolved_names,
     })
 }
