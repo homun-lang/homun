@@ -9,6 +9,8 @@ Homun is not a language. It is a template-instantiation embed script. Thus, Hind
 
 ## Examples
 
+see _site/examples
+
 ```
 // Valid Parentheses
 is_valid := (s) -> {
