@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y \
     gcc-aarch64-linux-gnu \
     && rm -rf /var/lib/apt/lists/*
 
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+
 WORKDIR /app
 COPY . .
 RUN cargo build --release --target ${TARGET}
