@@ -77,7 +77,9 @@ codegenVariant i (VariantDef name (Just ty)) =
 codegenFn :: Indent -> Name -> [Param] -> Maybe TypeExpr -> Maybe TypeExpr
           -> [Stmt] -> Expr -> Bool -> String
 codegenFn i name params retTy voidMark stmts finalExpr isRec =
-  let paramStr = codegenParams params
+  let -- Detect which params are reassigned in the body
+      bodyText   = concatMap (codegenStmt (i+1)) stmts ++ codegenExpr (i+1) finalExpr
+      paramStr   = codegenParamsMut params stmts finalExpr
       retStr   = case voidMark of
                    Just _  -> ""
                    Nothing -> case retTy of
@@ -121,6 +123,21 @@ codegenParams params =
     assign (acc, ls) (Param name (Just ty)) =
       ((name ++ ": " ++ codegenType ty) : acc, ls)
 
+-- | Like codegenParams but adds 'mut' to all named params
+--   (Homun allows rebinding any variable; #![allow(unused_mut)] suppresses warnings)
+codegenParamsMut :: [Param] -> [Stmt] -> Expr -> String
+codegenParamsMut params _stmts _finalExpr =
+  let letters = ["T","U","V","W","X","Y","Z"]
+      (ps, _) = foldl assign ([], letters) params
+  in intercalate ", " (reverse ps)
+  where
+    assign (acc, ls) (Param name Nothing) =
+      let l = head ls
+      in (("mut " ++ name ++ ": " ++ l) : acc, tail ls)
+    assign (acc, ls) (Param "_" _) = ("_: _" : acc, ls)
+    assign (acc, ls) (Param name (Just ty)) =
+      (("mut " ++ name ++ ": " ++ codegenType ty) : acc, ls)
+
 -- ─────────────────────────────────────────
 -- Statements inside functions
 -- ─────────────────────────────────────────
@@ -128,9 +145,11 @@ codegenParams params =
 -- | Detect re-bind: name appears in the generated RHS (simple substring check)
 nameInRhs :: String -> String -> Bool
 nameInRhs name rhs = name `isPrefixOf` rhs
-                  || (" " ++ name) `isInfixOf` rhs
-  where isInfixOf needle haystack = any (isPrefixOf needle) (tails haystack)
-        tails [] = []; tails s@(_:xs) = s : tails xs
+                  || any (\pre -> (pre ++ name) `isInfixOf'` rhs)
+                         [" ", "(", ", "]
+  where isInfixOf' needle haystack = any (isPrefixOf needle) (tails haystack)
+        tails [] = [[]]
+        tails s@(_:xs) = s : tails xs
 
 codegenStmt :: Indent -> Stmt -> String
 codegenStmt i s = case s of
@@ -145,7 +164,10 @@ codegenStmt i s = case s of
         in ind i ++ "let " ++ name ++ " = |" ++ paramStr ++ "| {"
            ++ "\n" ++ unlines bodyLines ++ ind i ++ "};"
       _ ->
-        ind i ++ "let mut " ++ name ++ " = " ++ codegenExpr i expr ++ ";"
+        let rhs = codegenExpr i expr
+        in if nameInRhs name rhs
+             then ind i ++ name ++ " = " ++ rhs ++ ";"
+             else ind i ++ "let mut " ++ name ++ " = " ++ rhs ++ ";"
 
   SUse path ->
     ind i ++ "use " ++ intercalate "::" path ++ ";"
@@ -193,7 +215,7 @@ codegenExpr i expr = case expr of
     codegenExpr i e ++ "." ++ field
 
   EIndex e idx ->
-    codegenExpr i e ++ "[" ++ codegenExpr i idx ++ "]"
+    codegenExpr i e ++ ".homun_idx(" ++ codegenExpr i idx ++ ")"
 
   ESlice e start end step ->
     -- Rust doesn't have Python slices natively; emit a helper call
@@ -216,7 +238,7 @@ codegenExpr i expr = case expr of
     "(" ++ intercalate ", " (map (codegenExpr i) items) ++ ")"
 
   EStruct (Just name) fields ->
-    let fieldStr = intercalate ", " (map (\(n,e) -> n ++ ": " ++ codegenExpr i e) fields)
+    let fieldStr = intercalate ", " (map (\(n,e) -> n ++ ": " ++ codegenStructField i e) fields)
     in name ++ " { " ++ fieldStr ++ " }"
   EStruct Nothing fields ->
     -- anonymous struct → tuple struct or use a macro; emit as struct literal with unnamed type
@@ -227,6 +249,8 @@ codegenExpr i expr = case expr of
     let l = codegenExpr i lhs
         r = codegenExpr i rhs
     in case op of
+         OpAdd | isListExpr lhs || isListExpr rhs
+                -> "homun_concat(" ++ l ++ ", " ++ r ++ ")"
          OpAdd   -> l ++ " + " ++ r
          OpSub   -> l ++ " - " ++ r
          OpMul   -> l ++ " * " ++ r
@@ -249,6 +273,13 @@ codegenExpr i expr = case expr of
          OpNot -> "!" ++ s
          OpNeg -> "-" ++ s
 
+  -- Pipe: lhs | filter/map(args)  →  filter/map(&lhs, args)  (pass by reference)
+  EPipe lhs (ECall (EVar "filter") args) ->
+    "filter(&" ++ codegenExpr i lhs ++
+    (if null args then "" else ", " ++ intercalate ", " (map (codegenExpr i) args)) ++ ")"
+  EPipe lhs (ECall (EVar "map") args) ->
+    "map(&" ++ codegenExpr i lhs ++
+    (if null args then "" else ", " ++ intercalate ", " (map (codegenExpr i) args)) ++ ")"
   -- Pipe: lhs | f(args)  →  f(lhs, args)
   EPipe lhs (ECall fn args) ->
     codegenExpr i fn ++ "(" ++ codegenExpr i lhs ++
@@ -264,9 +295,26 @@ codegenExpr i expr = case expr of
     in "|" ++ paramStr ++ "| {\n" ++ unlines bodyLines ++ ind i ++ "}"
 
   ECall (EVar "print") args ->
-    "println!(" ++ intercalate ", " (map (codegenExpr i) args) ++ ")"
+    case args of
+      [EString s] ->
+        let (fmt, fmtArgs) = parseInterp s
+        in if null fmtArgs
+             then "println!(\"" ++ fmt ++ "\")"
+             else "println!(\"" ++ fmt ++ "\", " ++ intercalate ", " fmtArgs ++ ")"
+      [e] ->
+        "println!(\"{}\", " ++ codegenExpr i e ++ ")"
+      _ ->
+        "println!(" ++ intercalate ", " (map (codegenExpr i) args) ++ ")"
+  ECall (EVar "len") [arg] ->
+    "len(&" ++ codegenExpr i arg ++ ")"
+  ECall (EVar "filter") (v:rest) ->
+    "filter(&" ++ codegenExpr i v ++
+    (if null rest then "" else ", " ++ intercalate ", " (map (codegenExpr i) rest)) ++ ")"
+  ECall (EVar "map") (v:rest) ->
+    "map(&" ++ codegenExpr i v ++
+    (if null rest then "" else ", " ++ intercalate ", " (map (codegenExpr i) rest)) ++ ")"
   ECall fn args ->
-    codegenExpr i fn ++ "(" ++ intercalate ", " (map (codegenExpr i) args) ++ ")"
+    codegenExpr i fn ++ "(" ++ intercalate ", " (map (codegenArgClone i) args) ++ ")"
 
   EIf cond thenStmts thenExpr elseClause ->
     let condS = codegenExpr i cond
@@ -340,7 +388,9 @@ codegenArm :: Indent -> MatchArm -> String
 codegenArm i (MatchArm pat guard body) =
   let patS   = codegenPat pat
       guardS = maybe "" (\g -> " if " ++ codegenExpr i g) guard
-      bodyS  = codegenExpr (i+1) body
+      bodyS  = case body of
+                 EString s -> codegenString s ++ ".to_string()"
+                 _         -> codegenExpr (i+1) body
   in ind (i+1) ++ patS ++ guardS ++ " => " ++ bodyS ++ ","
 
 codegenPat :: Pat -> String
@@ -405,3 +455,31 @@ parseInterp (c:rest) =
 toUpper :: String -> String
 toUpper []     = []
 toUpper (c:cs) = (if c >= 'a' && c <= 'z' then toEnum (fromEnum c - 32) else c) : toUpper cs
+
+-- | Clone variable arguments to preserve Homun's value semantics in Rust.
+--   Primitives (i32, f32, bool) are Copy so .clone() is a no-op.
+--   Collections (Vec, HashMap) get properly cloned.
+codegenArgClone :: Indent -> Expr -> String
+codegenArgClone i (EVar n) = n ++ ".clone()"
+codegenArgClone i e = codegenExpr i e
+
+-- | Codegen a struct field value — auto .to_string() for string literals
+codegenStructField :: Indent -> Expr -> String
+codegenStructField i (EString s) = codegenString s ++ ".to_string()"
+codegenStructField i e = codegenExpr i e
+
+-- | Is this a string literal?
+isStringLit :: Expr -> Bool
+isStringLit (EString _) = True
+isStringLit _ = False
+
+-- | Heuristic: does this expression produce a Vec?
+isListExpr :: Expr -> Bool
+isListExpr (EList _) = True
+isListExpr (ESlice _ _ _ _) = True
+isListExpr (ECall (EVar "filter") _) = True
+isListExpr (ECall (EVar "map") _) = True
+isListExpr (EPipe _ (ECall (EVar "filter") _)) = True
+isListExpr (EPipe _ (ECall (EVar "map") _)) = True
+isListExpr (EBinOp OpAdd l r) = isListExpr l || isListExpr r
+isListExpr _ = False
