@@ -107,7 +107,12 @@ use graph                       // import graph.rs or graph.hom
 ```
 
 Import resolves `use foo` to: `foo.hom` → `foo.rs` → `foo/mod.hom` → `foo/mod.rs`
+Search is relative to the calling file's directory.
 If none found, passes through as Rust `use foo;`
+
+Runtime libs (`heap`, `re`, `chars`, `str_ext`, `dict`) live in `Homun-Lang/runtime/`.
+To use them in a project, either: (a) place the .hom test files in the same runtime/ dir,
+or (b) copy/symlink the .rs files into the project's source directory.
 
 ### Error Handling (Result + ?)
 ```hom
@@ -182,18 +187,63 @@ range(0, 10, 2)                 // 0, 2, 4, 6, 8
 ```hom
 use heap
 h := heap_new()
-heap_push(h, 5, "item_a")      // priority, value
+heap_push(h, 5, "item_a")      // priority (int), value (str)
 heap_push(h, 1, "item_b")
-val := heap_pop(h)              // returns lowest priority first
-n := heap_len(h)
+result := heap_pop(h)          // Option<(int, str)> — lowest priority first
+match result {
+  Some((priority, item)) => { print("popped: ${item}") }
+  none => { print("empty") }
+}
+n := heap_len(h)               // int
+empty := heap_is_empty(h)      // bool
 ```
+**API**:
+- `heap_new() -> Heap`
+- `heap_push(h, priority: int, item: str) -> _`
+- `heap_pop(h) -> Option<(int, str)>`  — None if empty
+- `heap_len(h) -> int`
+- `heap_is_empty(h) -> bool`
 
 ### `use re` — Regex
 ```hom
 use re
 matched, text, end_pos := re_match("[a-z]+", src, pos)
 if (matched) do { print("found: ${text}") }
+
+ok := re_is_match("[0-9]+", "hello 42")   // true — matches anywhere in text
 ```
+**API**:
+- `re_match(pattern: str, text: str, pos: int) -> (bool, str, int)` — anchored at `pos`; returns (matched, matched_text, end_pos)
+- `re_is_match(pattern: str, text: str) -> bool` — true if pattern matches anywhere
+
+**Note**: Projects using `re` must add `regex = "1"` to Cargo.toml.
+
+### `use str_ext` — String Extras
+```hom
+use str_ext
+s := str_repeat(" ", 10)       // "          " — repeat str n times
+s := str_pad_center("hi", 10)  // "    hi    " — center in width chars
+```
+**API**:
+- `str_repeat(s: str, n: int) -> str` — n <= 0 returns ""
+- `str_pad_center(s: str, width: int) -> str` — pads with spaces; odd padding goes right
+
+### `use dict` — Dict Builder Helpers
+```hom
+use dict
+// Build dict from list of (key, value) pairs
+d := dict_from_pairs(@[("a", 1), ("b", 2)])
+
+// Build dict from two parallel lists (replaces Python dict comprehensions)
+d := dict_zip(keys, values)
+
+// Clone a dict
+d2 := dict_clone(d)
+```
+**API**:
+- `dict_from_pairs(pairs: @[(K, V)]) -> @{K: V}` — last value wins on duplicate keys
+- `dict_zip(keys: @[K], values: @[V]) -> @{K: V}` — stops at shorter list
+- `dict_clone(d: @{K: V}) -> @{K: V}` — returns an independent copy
 
 ### `use chars` — Character Classification
 ```hom
