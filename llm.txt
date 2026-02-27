@@ -1,0 +1,284 @@
+# Homun-Lang — User Guide for Writing .hom Code
+
+You are writing .hom code. You do NOT need to understand the compiler.
+Think of .hom as "Python-like syntax that compiles to Rust."
+
+## Quick Start
+
+```bash
+homunc main.hom -o main.rs    # compile .hom → .rs
+rustc main.rs -o main          # compile .rs → binary
+```
+
+## Syntax Cheat Sheet
+
+### Variables (always `:=`, no let/var/const)
+```hom
+x := 10
+name := "hello"
+speed := 3.14
+active := true
+nothing := none
+```
+
+### String Interpolation
+```hom
+msg := "Hello ${name}, score: ${x * 2}"
+```
+
+### Collections (@ prefix, bracket shape = type)
+```hom
+list := @[1, 2, 3]                    // Vec (ordered)
+dict := @{"a": 1, "b": 2}            // HashMap (key-value)
+set  := @("x", "y", "z")             // HashSet (unique)
+```
+
+### Functions (lambdas, last expression = return value)
+```hom
+add := (a, b) -> { a + b }                    // inferred types
+add_typed := (a: int, b: int) -> int { a + b } // explicit types
+log := (msg) -> _ { print(msg) }               // void (-> _)
+greet := () -> str { "hello" }                  // no args
+```
+
+### Control Flow
+```hom
+// if/else (use `do` before `{`)
+if (x > 0) do { print("positive") } else { print("non-positive") }
+
+// match (expression, result can be assigned)
+result := match dir {
+  Direction.North => "up"
+  Direction.South => "down"
+  _ => "other"
+}
+
+// for loop
+for i in range(10) do { print(i) }
+for item in list do { process(item) }
+
+// while loop
+while (count > 0) do { count := count - 1 }
+
+// early return from loop
+break => value
+```
+
+### Pipe Operator (chain functions)
+```hom
+result := @[1, 2, 3, 4, 5]
+  | filter((x) -> { x > 2 })
+  | map((x) -> { x * 10 })
+  | reduce((a, b) -> { a + b })
+// same as: reduce(map(filter(list, f), g), h)
+```
+
+### Structs (data only, no methods)
+```hom
+Point := struct { x: int, y: int }
+p := Point { x: 10, y: 20 }
+p.x := 15                      // field mutation
+```
+
+### Enums
+```hom
+Direction := enum { North, South, East, West }
+Shape := enum { Rect(str), Circle(int), Diamond }
+
+match shape {
+  Shape.Rect(label) => draw_rect(label)
+  Shape.Circle(r) => draw_circle(r)
+  Shape.Diamond => draw_diamond()
+}
+```
+
+### Destructuring
+```hom
+a, b := b, a                   // swap
+x, y := get_coords(node)       // unpack tuple return
+_, second := get_pair()         // discard first
+```
+
+### Imports
+```hom
+use std                         // standard library (range, len, filter, map, ...)
+use heap                        // import heap.rs or heap.hom from same directory
+use graph                       // import graph.rs or graph.hom
+```
+
+Import resolves `use foo` to: `foo.hom` → `foo.rs` → `foo/mod.hom` → `foo/mod.rs`
+If none found, passes through as Rust `use foo;`
+
+### Error Handling (Result + ?)
+```hom
+parse := (src: str) -> Result {
+  if (len(src) == 0) do { Err("empty") }
+  else { Ok(build_ast(src)) }
+}
+
+// ? propagates errors (returns Err early)
+node := parse_node(cursor)?
+graph := build_graph(nodes)?
+```
+
+## Standard Library (`use std`)
+
+### Collections
+```hom
+len(list)                       // length of list, dict, set, string
+push(list, item)                // append to list
+pop(list)                       // remove last
+sorted(list)                    // sorted copy
+reversed(list)                  // reversed copy
+unique(list)                    // deduplicated
+flatten(nested)                 // flatten nested lists
+enumerate(list)                 // [(0, a), (1, b), ...]
+zip(list_a, list_b)             // [(a1, b1), (a2, b2), ...]
+index_of(list, item)            // position or -1
+```
+
+### Functional
+```hom
+list | filter((x) -> { x > 0 })       // keep matching
+list | map((x) -> { x * 2 })          // transform each
+list | reduce((a, b) -> { a + b })     // fold to single value
+```
+
+### Math
+```hom
+abs(x)                          // absolute value
+min(a, b)                       // minimum
+max(a, b)                       // maximum
+clamp(x, lo, hi)                // clamp to range
+```
+
+### Strings
+```hom
+split(s, ",")                   // split by delimiter
+join(list, ", ")                // join with separator
+trim(s)                         // strip whitespace
+replace(s, "old", "new")       // replace all
+to_upper(s)                    // uppercase
+to_lower(s)                    // lowercase
+contains(s, "sub")             // substring check
+find(s, "sub")                 // position or -1
+substr(s, start, end)          // substring
+char_at(s, idx)                // character at index
+lines(s)                       // split by newline
+parse_int(s)                   // string → int
+parse_float(s)                 // string → float
+```
+
+### Range
+```hom
+range(5)                        // 0, 1, 2, 3, 4
+range(2, 7)                     // 2, 3, 4, 5, 6
+range(0, 10, 2)                 // 0, 2, 4, 6, 8
+```
+
+## Runtime Libraries (import with `use`)
+
+### `use heap` — Priority Queue
+```hom
+use heap
+h := heap_new()
+heap_push(h, 5, "item_a")      // priority, value
+heap_push(h, 1, "item_b")
+val := heap_pop(h)              // returns lowest priority first
+n := heap_len(h)
+```
+
+### `use re` — Regex
+```hom
+use re
+matched, text, end_pos := re_match("[a-z]+", src, pos)
+if (matched) do { print("found: ${text}") }
+```
+
+### `use chars` — Character Classification
+```hom
+use chars
+is_alpha("a")                   // true
+is_alnum("3")                   // true
+is_digit("7")                   // true
+is_ws(" ")                      // true
+```
+
+## Style Guide
+
+- Variables and functions: `snake_case` (enforced by compiler)
+- Types: `PascalCase` (convention)
+- No methods — use free functions: `set(canvas, x, y, ch)` not `canvas.set(x, y, ch)`
+- No classes — structs for data, functions for behavior
+- Pipe `|` for chaining instead of method chains
+- Last expression in `{}` is the return value (no `return` keyword)
+- `break => value` for early return from loops
+
+## Type Mapping (.hom → Rust)
+
+| .hom | Rust | Notes |
+|------|------|-------|
+| `int` | `i32` | |
+| `float` | `f32` | |
+| `str` | `String` | |
+| `bool` | `bool` | |
+| `none` | `Option::None` | |
+| `@[T]` | `Vec<T>` | |
+| `@{K: V}` | `HashMap<K, V>` | |
+| `@(T)` | `HashSet<T>` | |
+| `-> _` | `()` | void |
+| untyped param | `T` (generic) | Rust infers |
+
+## Common Patterns for mermaid-ascii
+
+### Struct as "object" with free functions
+```hom
+Canvas := struct { width: int, height: int, cells: @[] }
+
+canvas_new := (w: int, h: int) -> Canvas {
+  Canvas { width: w, height: h, cells: @[] }
+}
+
+canvas_set := (c: Canvas, x: int, y: int, ch: str) -> _ {
+  c.cells[y][x] := ch
+}
+
+canvas_get := (c: Canvas, x: int, y: int) -> str {
+  c.cells[y][x]
+}
+```
+
+### Enum dispatch (replaces class inheritance)
+```hom
+NodeShape := enum { Rectangle, Rounded, Diamond, Circle }
+
+draw_node := (shape: NodeShape, x: int, y: int) -> _ {
+  match shape {
+    NodeShape.Rectangle => draw_rect(x, y)
+    NodeShape.Rounded => draw_rounded(x, y)
+    NodeShape.Diamond => draw_diamond(x, y)
+    NodeShape.Circle => draw_circle(x, y)
+  }
+}
+```
+
+### Recursive descent parser pattern
+```hom
+Cursor := struct { src: str, pos: int }
+
+cursor_peek := (c: Cursor, s: str) -> bool {
+  // check if src[pos..] starts with s
+  substr(c.src, c.pos, c.pos + len(s)) == s
+}
+
+cursor_consume := (c: Cursor, s: str) -> bool {
+  if (cursor_peek(c, s)) do {
+    c.pos := c.pos + len(s)
+    true
+  } else { false }
+}
+
+cursor_eof := (c: Cursor) -> bool {
+  c.pos >= len(c.src)
+}
+```
