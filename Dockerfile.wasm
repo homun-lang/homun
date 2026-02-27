@@ -8,8 +8,14 @@ WORKDIR /app
 COPY . .
 ENV HOMUN_VERSION=${VERSION}
 
-# Bootstrap: download released homunc to compile .hom files
-RUN wget -q https://github.com/HomunMage/Homun-Lang/releases/latest/download/homunc-linux-x86_64 -O /usr/local/bin/homunc \
+# Bootstrap: download released homunc to compile .hom files (detect host arch)
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "$ARCH" in \
+      amd64) HOMUNC_ARCH="x86_64" ;; \
+      arm64) HOMUNC_ARCH="aarch64" ;; \
+      *) HOMUNC_ARCH="x86_64" ;; \
+    esac && \
+    wget -q "https://github.com/HomunMage/Homun-Lang/releases/latest/download/homunc-linux-${HOMUNC_ARCH}" -O /usr/local/bin/homunc \
     && chmod +x /usr/local/bin/homunc \
     || true
 RUN find runtime src -name '*.hom' -exec sh -c 'homunc --raw "$1" -o "${1%.hom}.rs"' _ {} \; 2>/dev/null || true

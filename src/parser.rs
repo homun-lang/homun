@@ -211,6 +211,10 @@ impl Parser {
                         self.advance();
                         names.push(n);
                     }
+                    TokenKind::Underscore => {
+                        self.advance();
+                        names.push("_".to_string());
+                    }
                     _ => {
                         self.restore(saved);
                         let e = self.parse_expr()?;
@@ -221,7 +225,10 @@ impl Parser {
             if self.check(&TokenKind::Assign) {
                 self.advance();
                 let rhs = self.parse_expr()?;
-                let pats = names.into_iter().map(Pat::Var).collect();
+                let pats = names
+                    .into_iter()
+                    .map(|n| if n == "_" { Pat::Wild } else { Pat::Var(n) })
+                    .collect();
                 return Ok(Stmt::BindPat(Pat::Tuple(pats), rhs));
             }
             self.restore(saved);
@@ -337,10 +344,17 @@ impl Parser {
             TokenKind::Ge => Some(BinOp::Ge),
             TokenKind::In => Some(BinOp::In),
             TokenKind::Not => {
-                self.advance();
-                self.expect(&TokenKind::In)?;
-                let rhs = self.parse_add_sub()?;
-                return Ok(Expr::BinOp(BinOp::NotIn, Box::new(lhs), Box::new(rhs)));
+                // Only treat `not` as `not in` if on the same line as the LHS.
+                // Prevents `expr\nnot x` from being parsed as `expr not in x`.
+                let cur = self.pos.min(self.tokens.len() - 1);
+                if cur > 0 && self.tokens[cur].pos.line != self.tokens[cur - 1].pos.line {
+                    None
+                } else {
+                    self.advance();
+                    self.expect(&TokenKind::In)?;
+                    let rhs = self.parse_add_sub()?;
+                    return Ok(Expr::BinOp(BinOp::NotIn, Box::new(lhs), Box::new(rhs)));
+                }
             }
             _ => None,
         };

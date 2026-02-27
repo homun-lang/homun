@@ -838,6 +838,42 @@ foo := () -> _ {
         );
     }
 
+    /// Tuple bind with underscore wildcard — `a, _, c := triple()` emits `let (mut a, _, mut c) = triple()`
+    #[test]
+    fn test_tuple_bind_wildcard() {
+        let src = r#"
+foo := () -> _ {
+  a, _, c := triple()
+  a
+}
+"#;
+        let out = compile_snippet(src);
+        assert!(
+            out.contains("let (mut a, _, mut c) = triple()"),
+            "tuple bind with wildcard, got:\n{}",
+            out
+        );
+    }
+
+    /// `not` on next line after tuple bind must NOT be parsed as `not in`
+    #[test]
+    fn test_not_after_tuple_bind() {
+        let src = r#"
+triple := () -> _ { (true, "a", 0) }
+
+test_fn := () -> bool {
+  m, a, b := triple()
+  not m
+}
+"#;
+        let out = compile_snippet(src);
+        assert!(
+            out.contains("!m"),
+            "not m should compile to !m, got:\n{}",
+            out
+        );
+    }
+
     /// A4-L2: Tuple patterns in match arms — `(0, 1)` emits `(0, 1) =>`
     #[test]
     fn test_tuple_pat_match() {
