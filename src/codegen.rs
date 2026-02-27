@@ -484,6 +484,8 @@ fn cg_expr(i: Indent, sc: &Scope, expr: &Expr) -> String {
             )
         }
 
+        Expr::TryUnwrap(inner) => format!("{}?", cg_expr(i, sc, inner)),
+
         Expr::Range(start, end, step) => match (start, end, step) {
             (None, Some(e), None) => format!("(0..{})", cg_expr(i, sc, e)),
             (Some(s), Some(e), None) => format!("({}..{})", cg_expr(i, sc, s), cg_expr(i, sc, e)),

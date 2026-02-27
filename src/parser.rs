@@ -402,6 +402,10 @@ impl Parser {
                     let args = self.parse_arg_list()?;
                     e = Expr::Call(Box::new(e), args);
                 }
+                TokenKind::Question => {
+                    self.advance();
+                    e = Expr::TryUnwrap(Box::new(e));
+                }
                 _ => break,
             }
         }

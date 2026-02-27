@@ -107,6 +107,9 @@ pub enum Expr {
 
     // Range
     Range(Option<Box<Expr>>, Option<Box<Expr>>, Option<Box<Expr>>),
+
+    // Try-unwrap postfix `?`
+    TryUnwrap(Box<Expr>),
 }
 
 // ─────────────────────────────────────────

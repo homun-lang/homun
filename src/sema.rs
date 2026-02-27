@@ -240,6 +240,7 @@ fn check_expr(env: &HashSet<String>, expr: &Expr) -> Vec<SemaError> {
             errs.extend(check_expr(env, p));
             errs
         }
+        Expr::TryUnwrap(e) => check_expr(env, e),
         _ => vec![],
     }
 }

@@ -61,6 +61,7 @@ pub enum TokenKind {
     Semi,
     Underscore,
     At,
+    Question,
     // Delimiters
     LParen,
     RParen,
@@ -294,6 +295,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
             ';' => TokenKind::Semi,
             '_' => TokenKind::Underscore,
             '@' => TokenKind::At,
+            '?' => TokenKind::Question,
             '(' => TokenKind::LParen,
             ')' => TokenKind::RParen,
             '{' => TokenKind::LBrace,
