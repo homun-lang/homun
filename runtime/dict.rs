@@ -19,6 +19,11 @@
 // Why needed: Python uses dict comprehensions 8+ times in sugiyama.py for
 // building lookup tables like `{node: pos for pos, node in enumerate(ordering)}`.
 // These builders replace that pattern without verbose loop boilerplate in .hom.
+//
+// Type note:
+//   dict_clone takes HashMap by value (not by reference) so that .hom code
+//   like `d2 := dict_clone(d)` works correctly: homunc codegen emits
+//   `dict_clone(d.clone())` which passes an owned HashMap.
 // ============================================================
 
 use std::collections::HashMap;
@@ -36,9 +41,11 @@ pub fn dict_zip<K: Eq + Hash, V>(keys: Vec<K>, values: Vec<V>) -> HashMap<K, V> 
     keys.into_iter().zip(values.into_iter()).collect()
 }
 
-/// Return a deep clone of `d`.
-pub fn dict_clone<K: Eq + Hash + Clone, V: Clone>(d: &HashMap<K, V>) -> HashMap<K, V> {
-    d.clone()
+/// Return a clone of `d`.
+/// Takes `d` by value so that `dict_clone(d.clone())` from .hom codegen works:
+/// the incoming clone is returned as-is (zero extra copies).
+pub fn dict_clone<K: Eq + Hash + Clone, V: Clone>(d: HashMap<K, V>) -> HashMap<K, V> {
+    d
 }
 
 #[cfg(test)]
@@ -123,7 +130,6 @@ mod tests {
 
     #[test]
     fn test_zip_more_keys_than_values() {
-        // excess keys are ignored
         let keys = vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let values = vec![1, 2];
         let d = dict_zip(keys, values);
@@ -135,7 +141,6 @@ mod tests {
 
     #[test]
     fn test_zip_more_values_than_keys() {
-        // excess values are ignored
         let keys = vec!["a".to_string()];
         let values = vec![1, 2, 3];
         let d = dict_zip(keys, values);
@@ -154,7 +159,7 @@ mod tests {
     #[test]
     fn test_clone_empty() {
         let original: HashMap<String, i32> = HashMap::new();
-        let cloned = dict_clone(&original);
+        let cloned = dict_clone(original.clone());
         assert!(cloned.is_empty());
     }
 
@@ -163,7 +168,7 @@ mod tests {
         let mut original = HashMap::new();
         original.insert("a".to_string(), 1);
         original.insert("b".to_string(), 2);
-        let cloned = dict_clone(&original);
+        let cloned = dict_clone(original.clone());
         assert_eq!(cloned.len(), 2);
         assert_eq!(cloned["a"], 1);
         assert_eq!(cloned["b"], 2);
@@ -174,7 +179,7 @@ mod tests {
         // Mutating the clone does not affect the original.
         let mut original = HashMap::new();
         original.insert("key".to_string(), 100);
-        let mut cloned = dict_clone(&original);
+        let mut cloned = dict_clone(original.clone());
         cloned.insert("key".to_string(), 999);
         assert_eq!(original["key"], 100);
         assert_eq!(cloned["key"], 999);
@@ -185,7 +190,7 @@ mod tests {
         // Mutating the original does not affect the clone.
         let mut original = HashMap::new();
         original.insert("k".to_string(), 1);
-        let cloned = dict_clone(&original);
+        let cloned = dict_clone(original.clone());
         original.insert("k".to_string(), 2);
         assert_eq!(cloned["k"], 1);
     }

@@ -9,28 +9,34 @@
 //   is_digit("7")   // true
 //   is_ws(" ")      // true
 //
-// Functions accept a &str (typically a single-character string)
-// and return true if ALL characters in the string satisfy the
-// predicate (empty string → true, matching Rust's Iterator::all).
+// Functions accept impl AsRef<str> so they work with both:
+//   - &str literals (used in Rust tests)
+//   - String values (emitted by homunc codegen for .hom string args,
+//     which always calls .to_string() on string literals)
+// Returns false for empty input.
 // ============================================================
 
 /// True if every character in `s` is alphabetic (Unicode).
-pub fn is_alpha(s: &str) -> bool {
+pub fn is_alpha(s: impl AsRef<str>) -> bool {
+    let s = s.as_ref();
     !s.is_empty() && s.chars().all(|c| c.is_alphabetic())
 }
 
 /// True if every character in `s` is alphanumeric (Unicode).
-pub fn is_alnum(s: &str) -> bool {
+pub fn is_alnum(s: impl AsRef<str>) -> bool {
+    let s = s.as_ref();
     !s.is_empty() && s.chars().all(|c| c.is_alphanumeric())
 }
 
 /// True if every character in `s` is an ASCII decimal digit (0–9).
-pub fn is_digit(s: &str) -> bool {
+pub fn is_digit(s: impl AsRef<str>) -> bool {
+    let s = s.as_ref();
     !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
 }
 
 /// True if every character in `s` is ASCII whitespace (space, tab, \n, \r).
-pub fn is_ws(s: &str) -> bool {
+pub fn is_ws(s: impl AsRef<str>) -> bool {
+    let s = s.as_ref();
     !s.is_empty() && s.chars().all(|c| c.is_ascii_whitespace())
 }
 
@@ -70,6 +76,14 @@ mod tests {
         assert!(!is_alpha(""));
     }
 
+    // Verify String type works (as emitted by homunc codegen)
+    #[test]
+    fn test_is_alpha_string_type() {
+        assert!(is_alpha("a".to_string()));
+        assert!(!is_alpha("3".to_string()));
+        assert!(!is_alpha("".to_string()));
+    }
+
     // ── is_alnum ────────────────────────────────────────────
     #[test]
     fn test_is_alnum_letters() {
@@ -102,6 +116,13 @@ mod tests {
         assert!(!is_alnum(""));
     }
 
+    // Verify String type works (as emitted by homunc codegen)
+    #[test]
+    fn test_is_alnum_string_type() {
+        assert!(is_alnum("a3".to_string()));
+        assert!(!is_alnum("_".to_string()));
+    }
+
     // ── is_digit ────────────────────────────────────────────
     #[test]
     fn test_is_digit_single() {
@@ -130,6 +151,13 @@ mod tests {
     #[test]
     fn test_is_digit_empty() {
         assert!(!is_digit(""));
+    }
+
+    // Verify String type works (as emitted by homunc codegen)
+    #[test]
+    fn test_is_digit_string_type() {
+        assert!(is_digit("7".to_string()));
+        assert!(!is_digit("a".to_string()));
     }
 
     // ── is_ws ───────────────────────────────────────────────
@@ -164,5 +192,12 @@ mod tests {
     #[test]
     fn test_is_ws_empty() {
         assert!(!is_ws(""));
+    }
+
+    // Verify String type works (as emitted by homunc codegen)
+    #[test]
+    fn test_is_ws_string_type() {
+        assert!(is_ws(" ".to_string()));
+        assert!(!is_ws("a".to_string()));
     }
 }

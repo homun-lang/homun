@@ -17,13 +17,18 @@
 //   ok := re_is_match("[0-9]+", "hello 42 world")
 //
 // API:
-//   re_match(pattern, text, pos) -> (bool, String, usize)
+//   re_match(pattern, text, pos) -> (bool, String, int)
 //     Anchored match at byte offset `pos`.  Returns (matched, matched_str, end_pos).
 //     Equivalent to Python's re.compile(pattern).match(text, pos).
+//     pos and end_pos use i32 to match .hom's int type.
 //
 //   re_is_match(pattern, text) -> bool
 //     True if pattern matches anywhere in text.
 //     Equivalent to Python's re.search(pattern, text) is not None.
+//
+// Both functions accept impl AsRef<str> for pattern and text, so they
+// work with both &str literals (Rust tests) and String values (homunc
+// codegen emits .to_string() on string literals when passing as args).
 //
 // Caching:
 //   Patterns are compiled once per thread and cached in a thread-local
@@ -61,27 +66,36 @@ fn get_or_compile(pattern: &str) -> Regex {
 /// - `captured_text`  — the matched substring (empty string when no match)
 /// - `end_pos`        — byte offset just after the match (`pos` when no match)
 ///
+/// `pos` and `end_pos` are `i32` to match .hom's `int` type.
+/// Accepts impl AsRef<str> for pattern and text.
+///
 /// Equivalent to Python's `re.compile(pattern).match(text, pos)`.
-pub fn re_match(pattern: &str, text: &str, pos: usize) -> (bool, String, usize) {
+pub fn re_match(pattern: impl AsRef<str>, text: impl AsRef<str>, pos: i32) -> (bool, String, i32) {
+    let pattern = pattern.as_ref();
+    let text = text.as_ref();
+    let pos = pos as usize;
     if pos > text.len() {
-        return (false, String::new(), pos);
+        return (false, String::new(), pos as i32);
     }
     let re = get_or_compile(pattern);
     let haystack = &text[pos..];
     match re.find(haystack) {
         Some(m) if m.start() == 0 => {
             let matched_str = m.as_str().to_string();
-            let end = pos + m.end();
+            let end = (pos + m.end()) as i32;
             (true, matched_str, end)
         }
-        _ => (false, String::new(), pos),
+        _ => (false, String::new(), pos as i32),
     }
 }
 
 /// Return `true` if `pattern` matches anywhere in `text`.
 ///
+/// Accepts impl AsRef<str> for pattern and text.
 /// Equivalent to Python's `re.search(pattern, text) is not None`.
-pub fn re_is_match(pattern: &str, text: &str) -> bool {
+pub fn re_is_match(pattern: impl AsRef<str>, text: impl AsRef<str>) -> bool {
+    let pattern = pattern.as_ref();
+    let text = text.as_ref();
     let re = get_or_compile(pattern);
     re.is_match(text)
 }
@@ -118,6 +132,13 @@ mod tests {
         assert!(!re_is_match("^hello$", "hello world"));
     }
 
+    // Verify String type works (as emitted by homunc codegen)
+    #[test]
+    fn test_re_is_match_string_type() {
+        assert!(re_is_match("[0-9]+".to_string(), "hello 42".to_string()));
+        assert!(!re_is_match("[0-9]+".to_string(), "no digits".to_string()));
+    }
+
     // ── re_match — anchoring at pos ──────────────────────────
     #[test]
     fn test_re_match_at_start() {
@@ -129,7 +150,6 @@ mod tests {
 
     #[test]
     fn test_re_match_at_offset() {
-        // "world" starts at byte 6 in "hello world"
         let (matched, text, end) = re_match("[a-zA-Z_][a-zA-Z0-9_]*", "hello world", 6);
         assert!(matched);
         assert_eq!(text, "world");
@@ -138,7 +158,6 @@ mod tests {
 
     #[test]
     fn test_re_match_anchored_mid_word() {
-        // pos=3 is mid-word in "hello"; pattern matches "lo" starting there
         let (matched, text, end) = re_match("[a-zA-Z_]+", "hello world", 3);
         assert!(matched);
         assert_eq!(text, "lo");
@@ -147,7 +166,6 @@ mod tests {
 
     #[test]
     fn test_re_match_no_match_at_pos() {
-        // No digit at pos=0 of "hello 42"
         let (matched, text, end) = re_match("[0-9]+", "hello 42", 0);
         assert!(!matched);
         assert_eq!(text, "");
@@ -171,16 +189,17 @@ mod tests {
     #[test]
     fn test_re_match_pos_at_end() {
         let text = "hello";
-        let (matched, _, _) = re_match("[a-z]+", text, text.len());
+        let (matched, _, _) = re_match("[a-z]+", text, text.len() as i32);
         assert!(!matched);
     }
 
     #[test]
     fn test_re_match_pos_beyond_end() {
         let text = "hello";
-        let (matched, _, ret_pos) = re_match("[a-z]+", text, text.len() + 1);
+        let beyond = (text.len() + 1) as i32;
+        let (matched, _, ret_pos) = re_match("[a-z]+", text, beyond);
         assert!(!matched);
-        assert_eq!(ret_pos, text.len() + 1);
+        assert_eq!(ret_pos, beyond);
     }
 
     // ── caching: same pattern compiled only once ─────────────
@@ -202,6 +221,19 @@ mod tests {
         for _ in 0..10 {
             assert!(re_is_match(pattern, "x99y"));
         }
+    }
+
+    // Verify String type works (as emitted by homunc codegen)
+    #[test]
+    fn test_re_match_string_type() {
+        let (matched, text, end) = re_match(
+            "[a-zA-Z_][a-zA-Z0-9_]*".to_string(),
+            "hello world".to_string(),
+            0,
+        );
+        assert!(matched);
+        assert_eq!(text, "hello");
+        assert_eq!(end, 5);
     }
 
     // ── mermaid-parser style patterns ────────────────────────
@@ -242,7 +274,6 @@ mod tests {
 
     #[test]
     fn test_re_match_multiple_patterns_cached() {
-        // Exercise cache with several different patterns
         let text = "flowchart LR";
         let (m1, t1, _) = re_match("[a-z]+", text, 0);
         let (m2, t2, _) = re_match("[A-Z]+", text, 10);

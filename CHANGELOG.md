@@ -8,6 +8,30 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ## homunc + rustc Era (v0.40+) 
 
+### v0.41 — Pattern Matching, Result/Option & Runtime Libraries
+
+**Language features (part-a):**
+- `?` postfix TryUnwrap operator for Result/Option propagation
+- `Ok(x)` / `Err(msg)` / `Some(x)` recognized as sema builtins
+- `TypeExpr::Generic` parsing and codegen (e.g., `Result<i32, String>`)
+- Tuple destructuring bind in let statements
+- Tuple patterns in match arms
+- Nested constructor patterns in match arms (`Ok(x)`, `Err(msg)`, `Some(x)`)
+- Mutable nested indexing via `Stmt::Assign` for lvalue assignment
+- `.to_string()` fix for `Str` arguments
+
+**Runtime libraries (part-b):**
+- `heap.rs` — priority queue wrapping `BinaryHeap` with `Reverse`; `heap_push` accepts `&str`; `heap_is_empty`, `heap_pop` returns `Option`
+- `re.rs` — regex pattern matching with thread-local caching (`re_match`, `re_is_match`)
+- `chars.rs` — character classification (`is_alpha`, `is_alnum`, `is_digit`, `is_ws`)
+- `str_ext.rs` — `str_repeat`, `str_pad_center`
+- `dict.rs` — `dict_from_pairs`, `dict_zip`, `dict_clone` (HashMap helpers)
+
+**Testing & docs:**
+- Integration tests: multi-file `.hom` using `?`, `Ok`/`Err`, tuple destruct, nested match, nested index
+- `.hom` integration tests for chars, re, and heap libraries
+- Updated `llm.txt` with new runtime library documentation
+
 ### v0.40 — Starting Self-Host
 
 - Added `--raw` flag to skip preamble (for compiling modules, not standalone programs)

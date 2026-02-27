@@ -1,0 +1,9 @@
+// A2 verification: Ok()/Err() constructors already work
+use std
+
+main := () -> _ {
+  x := Ok(42)
+  y := Err("fail")
+  print("x done")
+  print("y done")
+}
