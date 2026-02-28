@@ -83,9 +83,17 @@ fn codegen_top_level(i: Indent, stmt: &Stmt, rs_content: &HashMap<String, String
             final_expr,
         ),
         Stmt::Bind(name, expr) => {
+            let ty = match expr {
+                Expr::Str(_) => "&str",
+                Expr::Int(_) => "i32",
+                Expr::Float(_) => "f32",
+                Expr::Bool(_) => "bool",
+                _ => "_",
+            };
             format!(
-                "pub const {}: _ = {};",
+                "pub const {}: {} = {};",
                 to_upper(name),
+                ty,
                 cg_expr(i, &HashSet::new(), expr)
             )
         }

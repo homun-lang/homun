@@ -8,6 +8,18 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 
 
+### v0.51 — Const Type Inference & CI Submodule Support
+
+**Codegen:**
+- Top-level bindings now infer const types: `name := "foo"` emits `pub const NAME: &str` instead of `pub const NAME: _`
+- Supports `&str`, `i32`, `f32`, `bool`; other expressions fall back to `_`
+
+**CI/CD:**
+- All workflows (ci, release, cd) now use `submodules: recursive` for `actions/checkout`
+- CD auto-triggers after "Build and Release" succeeds (both Homun-Lang and mermaid-ascii)
+
+---
+
 ### v0.50 — hom-std Submodule, --module Flag & Integration Tests
 
 **Runtime refactor:**
