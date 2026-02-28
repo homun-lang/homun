@@ -1,6 +1,6 @@
-// sema_dep.rs — Zero-impact trigger for has_rs_dep + sema error-list helpers.
+// sema_imp.rs — Zero-impact trigger for has_rs_dep + sema error-list helpers.
 //
-// Importing this file via `use sema_dep` in sema.hom sets has_rs_dep=true in
+// Importing this file via `use sema_imp` in sema.hom sets has_rs_dep=true in
 // the homunc sema checker, which disables undefined-reference checks for dep/*
 // functions (scope_*, stmt_kind, expr_kind, pat_kind, etc.) that are unknown
 // to the homunc static checker but available at include!() time in lib.rs.

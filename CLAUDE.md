@@ -23,6 +23,20 @@ tests/         — Test suite
 _site/         — Documentation site with examples
 ```
 
+## Self-Hosting Convention: `.hom` + `_imp.rs`
+
+When a compiler module is written in Homun, it follows the pattern:
+- `src/foo.hom` — main logic in Homun
+- `src/foo_imp.rs` — Rust helper types/functions that `.hom` imports via `use foo_imp`
+
+Importing `_imp.rs` sets `has_rs_dep=true` in homunc's sema checker, disabling
+undefined-reference warnings for `dep/` functions and runtime functions that are
+available at `include!()` time but unknown to homunc's static checker.
+
+Current self-hosted modules:
+- `codegen.hom` + `codegen_imp.rs`
+- `sema.hom` + `sema_imp.rs`
+
 ## Work Cycle
 
 ### Step 1: Clean Slate
@@ -41,6 +55,16 @@ git status
 - Make the smallest possible change to complete the ticket
 - Stay in scope — don't refactor unrelated code
 - Don't add features beyond what the ticket asks
+
+### Step 3b: Bootstrap homunc
+Before building, ensure `.tmp/homunc` exists:
+```bash
+mkdir -p .tmp
+if [ ! -x .tmp/homunc ]; then
+  wget -q https://github.com/HomunMage/Homun-Lang/releases/latest/download/homunc-linux-x86_64 -O .tmp/homunc
+  chmod +x .tmp/homunc
+fi
+```
 
 ### Step 4: Test
 Auto-detect project type and run tests:

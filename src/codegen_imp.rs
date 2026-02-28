@@ -1,6 +1,6 @@
-// codegen_dep.rs — Type aliases and accessors for codegen.hom.
+// codegen_imp.rs — Type aliases and accessors for codegen.hom.
 //
-// Importing this file via `use codegen_dep` in codegen.hom sets has_rs_dep=true
+// Importing this file via `use codegen_imp` in codegen.hom sets has_rs_dep=true
 // in the homunc sema checker, disabling undefined-reference checks for dep/*
 // functions (scope_*, stmt_kind, expr_kind, codegen_type, etc.) and for
 // runtime functions (join, push, etc.) that are available at include!() time

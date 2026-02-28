@@ -4,7 +4,7 @@
 //   dep/ast_access.rs      — stmt_kind/expr_kind/pat_kind + typed accessors
 //   dep/scope.rs           — Scope (Rc<RefCell<HashSet<String>>>) wrapper
 //   dep/codegen_helpers.rs — ind, codegen_string, codegen_type, etc.
-//   src/codegen_dep.rs     — RsContent/HomFiles type aliases, accessors
+//   src/codegen_imp.rs     — RsContent/HomFiles type aliases, accessors
 //
 // Public API (called from lib.rs mod codegen_hom after P2.4 wiring):
 //   codegen_program_with_resolved(prog, hom_files, rs_content) -> str
@@ -16,9 +16,9 @@
 //   cg_stmts, cg_body, cg_stmt,
 //   cg_top_fn, codegen_top_level_stmt, codegen_program_with_resolved
 
-// `use codegen_dep` sets has_rs_dep=true so homunc skips undefined-reference
+// `use codegen_imp` sets has_rs_dep=true so homunc skips undefined-reference
 // checks for dep/ functions and runtime functions (join, push, replace, etc.)
-use codegen_dep
+use codegen_imp
 
 
 // ─── pat_names_list ───────────────────────────────────────────────────────────
