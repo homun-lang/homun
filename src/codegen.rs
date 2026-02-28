@@ -154,7 +154,11 @@ fn codegen_fn(
 
 fn cg_body(i: Indent, scope: &Scope, stmts: &[Stmt], fe: &Expr) -> Vec<String> {
     let (mut lines, scope2) = cg_stmts(i, scope, stmts);
-    lines.push(format!("{}{}", ind(i), cg_expr(i, &scope2, fe)));
+    let fe_s = match fe {
+        Expr::Str(s) => format!("{}.to_string()", codegen_string(s)),
+        _ => cg_expr(i, &scope2, fe),
+    };
+    lines.push(format!("{}{}", ind(i), fe_s));
     lines
 }
 
@@ -203,7 +207,15 @@ fn cg_stmt(i: Indent, scope: &Scope, stmt: &Stmt) -> (String, Scope) {
             (line, s)
         }
         Stmt::Bind(name, expr) => {
-            let rhs = cg_expr(i, scope, expr);
+            // Clone Var/Field RHS and .to_string() string literals to avoid move/type errors
+            let rhs = match expr {
+                Expr::Var(n) if scope.contains(n) => format!("{}.clone()", n),
+                Expr::Field(_, _) => format!("{}.clone()", cg_expr(i, scope, expr)),
+                Expr::Str(s) if scope.contains(name) => {
+                    format!("{}.to_string()", codegen_string(s))
+                }
+                _ => cg_expr(i, scope, expr),
+            };
             if scope.contains(name) {
                 (format!("{}{} = {};", ind(i), name, rhs), scope.clone())
             } else {
@@ -220,7 +232,14 @@ fn cg_stmt(i: Indent, scope: &Scope, stmt: &Stmt) -> (String, Scope) {
             (format!("{}let ({}) = {};", ind(i), pat_s, rhs), s)
         }
         Stmt::Assign(lhs, rhs) => {
-            let rhs_s = cg_expr(i, scope, rhs);
+            let rhs_s = match (lhs, rhs) {
+                // Field assignment with string literal RHS needs .to_string()
+                // so that &str becomes String (e.g. bc.top_left = "╭".to_string()).
+                (Expr::Field(_, _), Expr::Str(s)) => {
+                    format!("{}.to_string()", codegen_string(s))
+                }
+                _ => cg_expr(i, scope, rhs),
+            };
             (
                 format!("{}{} = {};", ind(i), cg_lvalue(i, scope, lhs), rhs_s),
                 scope.clone(),
@@ -418,6 +437,12 @@ fn cg_expr(i: Indent, sc: &Scope, expr: &Expr) -> String {
                 if HOMUN_MACROS.contains(&n.as_str()) {
                     return format!("{}!({})", n, commas(i, sc, args));
                 }
+                // push(vec, item) → push(&mut vec, item.clone())
+                if n == "push" && args.len() == 2 {
+                    let v = cg_expr(i, sc, &args[0]);
+                    let item = clone_arg(i, sc, &args[1]);
+                    return format!("push(&mut {}, {})", v, item);
+                }
             }
             let arg_strs: Vec<String> = args.iter().map(|a| clone_arg(i, sc, a)).collect();
             format!("{}({})", cg_expr(i, sc, f), arg_strs.join(", "))
@@ -443,9 +468,19 @@ fn cg_expr(i: Indent, sc: &Scope, expr: &Expr) -> String {
 
         Expr::Match(scrut, arms) => {
             let arm_strs: Vec<String> = arms.iter().map(|a| cg_arm(i, sc, a)).collect();
+            // Detect if any arm has a string literal pattern — if so, the scrutinee
+            // is likely a String and must be converted with .as_str() for pattern matching.
+            let has_str_pat = arms
+                .iter()
+                .any(|a| matches!(&a.pat, Pat::Lit(Expr::Str(_))));
+            let scrut_s = if has_str_pat {
+                format!("{}.as_str()", cg_expr(i, sc, scrut))
+            } else {
+                cg_expr(i, sc, scrut)
+            };
             format!(
                 "match {} {{\n{}\n{}}}",
-                cg_expr(i, sc, scrut),
+                scrut_s,
                 arm_strs.join("\n"),
                 ind(i)
             )
@@ -798,6 +833,8 @@ fn clone_arg(i: Indent, sc: &Scope, expr: &Expr) -> String {
         Expr::Var(n) => format!("{}.clone()", n),
         // String literals passed as arguments need .to_string() so they become String, not &str.
         Expr::Str(s) => format!("{}.to_string()", codegen_string(s)),
+        // Field access (e.g. c.src, bc.horizontal) must be cloned when passed as function args.
+        Expr::Field(_, _) => format!("{}.clone()", cg_expr(i, sc, expr)),
         _ => cg_expr(i, sc, expr),
     }
 }
