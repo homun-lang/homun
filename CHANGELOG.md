@@ -6,7 +6,16 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.60 — Self-Hosting Compiler
 
+- Rewrote `codegen.rs` and `sema.rs` in Homun (`src/codegen.hom`, `src/sema.hom`) — compiler now compiles itself
+- `build.rs` bootstraps: downloads released `homunc` binary, compiles `.hom` sources to `.rs` into `OUT_DIR`
+- Added `src/dep/` Rust helper modules (`ast_access.rs`, `codegen_helpers.rs`, `scope.rs`) used by `.hom` codegen/sema via `use` imports
+- Added `src/lib.rs` exposing compiler as a library crate
+- Moved hom-std submodule from `hom/` to `src/hom/` for cleaner Cargo layout
+- Cargo edition upgraded to 2024
+
+---
 
 ### v0.51 — Const Type Inference & CI Submodule Support
 
