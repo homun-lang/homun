@@ -6,9 +6,9 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
-## homunc + rustc Era (v0.40+)
 
-### v0.42 — Codegen Fixes, Parser Hardening & Examples
+
+### v0.43 — Codegen Fixes, Parser Hardening & Examples
 
 **Codegen fixes:**
 - Enum variant access emits `::` instead of `.` — `Direction.TD` → `Direction::TD`
@@ -67,7 +67,9 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 - Playground displays WASM compiler version via `version.txt`
 - Playground removed all JS-side library loading — everything embedded in WASM compiler
 
-## Rust Compiler Era (v0.30+)
+---
+**homunc + rustc Era (v0.40+)**
+---
 
 ### v0.34 — Embedded Standard Library
 
@@ -115,8 +117,8 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 - Moved example `.hom` files and `std*.rs` to `_site/examples/`
 
 ---
-
-## Haskell Compiler Era (v0.23–v0.29, `haskell` branch)
+**Rust Compiler Era (v0.30+)**
+---
 
 ### v0.29 — File Reorganization
 
@@ -131,6 +133,11 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 ### v0.27 — Playground Refinements
 
 - Refined WASM playground UI and `Main.hs`
+
+
+---
+**Haskell Compiler Era (v0.23–v0.29, `haskell` branch)**
+---
 
 ### v0.26 — WASM Playground
 
