@@ -6,6 +6,17 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.62 — Full Self-Hosting (Lexer, Resolver, Main)
+
+- Ported lexer to Homun: `src/lexer.hom` + `src/lexer_imp.rs` (LexState helpers, token constructors, char-testing)
+- Ported resolver to Homun: `src/resolver.hom` + `src/resolver_imp.rs` (DFS three-color algorithm, I/O wrappers, pipeline helpers)
+- Ported main to Homun: `src/main.hom` + `src/main_imp.rs` (CLI arg parsing, compile pipelines, stdin/file/stdout modes)
+- All 5 compiler modules now self-hosted in `.hom`: codegen, sema, lexer, resolver, main (only parser.rs and ast.rs remain in Rust)
+- `src/main.rs` reduced to thin wrapper calling `homunc::main_hom::main()`
+- Deleted `runtime/` directory; moved test `.hom` files to `_site/examples/`
+
+---
+
 ### v0.61 — Char Type & Naming Conventions
 
 - Added `char` type: `'x'` literals map to Rust `char`, supports escapes (`'\n'`, `'\t'`, `'\\'`, `'\0'`)
