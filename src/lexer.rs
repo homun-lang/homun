@@ -42,10 +42,11 @@ pub enum TokenKind {
     As,
     Rec,
     // Operators
-    Assign,   // :=
-    Arrow,    // ->
-    FatArrow, // =>
-    Pipe,     // |
+    MutAssign, // ::=
+    Assign,    // :=
+    Arrow,     // ->
+    FatArrow,  // =>
+    Pipe,      // |
     Dot,
     Plus,
     Minus,
