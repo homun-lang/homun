@@ -25,7 +25,7 @@ use resolver_imp
 // Returns Ok(@[str]) — the exported names from the resolved file,
 //      or Err(str)   — a compile/cycle/sema error.
 
-resolve_file := (rs: ResolverState, path: str) -> Result {
+resolve_file := (rs: ResolverState, path: str) -> ResolveFileResult {
   canonical := path_canonicalize(path)?
   color := resolver_color_get(rs, canonical)
 
@@ -66,7 +66,7 @@ resolve_file := (rs: ResolverState, path: str) -> Result {
             if (fd_kind == "Hom") do {
               dep_exports := resolve_file(rs, fd_path)?
               imported_names := hashset_extend(imported_names, hashset_from_vec(dep_exports))
-              resolver_hom_names_insert(rs, dep_name)
+              dummy := resolver_hom_names_insert(rs, dep_name)
             }
 
             if (fd_kind == "Rs") do {
@@ -86,7 +86,7 @@ resolve_file := (rs: ResolverState, path: str) -> Result {
                     has_rs_dep := true
                   } else {
                     has_rs_dep := true
-                    resolver_hom_names_insert(rs, dep_name)
+                    dummy := resolver_hom_names_insert(rs, dep_name)
                   }
                 }
               }
@@ -135,14 +135,14 @@ resolve_file := (rs: ResolverState, path: str) -> Result {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-resolve := (entry_path: str) -> Result {
+resolve := (entry_path: str) -> ResolveProgramResult {
   rs := resolver_new(false)
   dummy := resolve_file(rs, entry_path)?
   files := resolver_files_get(rs)
   Ok(make_resolved_program(files))
 }
 
-resolve_module := (entry_path: str) -> Result {
+resolve_module := (entry_path: str) -> ResolveProgramResult {
   rs := resolver_new(true)
   dummy := resolve_file(rs, entry_path)?
   files := resolver_files_get(rs)

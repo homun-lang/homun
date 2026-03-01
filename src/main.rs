@@ -11,7 +11,7 @@
 ///     -> Parser  (parser.rs)  -> Program (AST)
 ///     -> Sema    (sema.rs)    -> Checked Program
 ///     -> Codegen (codegen.rs) -> Rust source text
-use homunc::{ast, codegen_hom, embedded_rs, lexer_hom, parser, resolver, sema_hom};
+use homunc::{ast, codegen_hom, embedded_rs, lexer_hom, parser, resolver_hom, sema_hom};
 
 use std::env;
 use std::fs;
@@ -109,9 +109,9 @@ fn compile_source(source: &str, raw: bool) -> Result<String, String> {
 /// Compile a .hom file, resolving multi-file `use` imports recursively.
 fn compile_file(path: &Path, raw: bool, module: bool) -> Result<String, String> {
     let resolved = if module {
-        resolver::resolve_module(path)?
+        resolver_hom::resolve_module(path.to_string_lossy().into_owned())?
     } else {
-        resolver::resolve(path)?
+        resolver_hom::resolve(path.to_string_lossy().into_owned())?
     };
     let mut output = if raw { String::new() } else { preamble() };
     for (i, file) in resolved.files.iter().enumerate() {

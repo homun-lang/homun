@@ -79,6 +79,13 @@ pub mod codegen_hom {
     include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
 }
 
+// ── resolver_hom — resolver compiled from resolver.hom ───────────────────────
+pub mod resolver_hom {
+    use crate::dep::*;
+    use crate::runtime::*;
+    include!(concat!(env!("OUT_DIR"), "/resolver.rs"));
+}
+
 // ── Embedded runtime library content ─────────────────────────────────────────
 // resolver.rs calls embedded_rs() from the crate root, so it must be pub here.
 pub fn embedded_rs(name: &str) -> Option<String> {

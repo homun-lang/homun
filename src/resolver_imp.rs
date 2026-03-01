@@ -50,6 +50,16 @@
 
 pub use crate::resolver::{ResolvedFile, ResolvedProgram};
 
+// ── Return type aliases for resolver.hom ─────────────────────────────────────
+// Homun generates bare `-> TypeName` return annotations. These aliases give
+// resolver.hom a single-token name for each Result variant it returns.
+
+/// Return type of resolve_file: Ok(exported names) or Err(message).
+pub type ResolveFileResult = Result<Vec<String>, String>;
+
+/// Return type of resolve / resolve_module: Ok(program) or Err(message).
+pub type ResolveProgramResult = Result<ResolvedProgram, String>;
+
 // ── Found — result of find_dep() ─────────────────────────────────────────────
 
 #[derive(Clone)]
