@@ -77,9 +77,10 @@ pub fn pat_kind(p: Pat) -> String {
 pub fn stmt_bind_name(s: Stmt) -> String {
     match s {
         Stmt::Bind(n, _) => n,
+        Stmt::BindMut(n, _) => n,
         Stmt::StructDef(n, _) => n,
         Stmt::EnumDef(n, _) => n,
-        _ => panic!("stmt_bind_name: not Bind/StructDef/EnumDef"),
+        _ => panic!("stmt_bind_name: not Bind/BindMut/StructDef/EnumDef"),
     }
 }
 
