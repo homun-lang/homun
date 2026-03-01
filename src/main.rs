@@ -11,7 +11,7 @@
 ///     -> Parser  (parser.rs)  -> Program (AST)
 ///     -> Sema    (sema.rs)    -> Checked Program
 ///     -> Codegen (codegen.rs) -> Rust source text
-use homunc::{ast, codegen_hom, embedded_rs, lexer, parser, resolver, sema_hom};
+use homunc::{ast, codegen_hom, embedded_rs, lexer_hom, parser, resolver, sema_hom};
 
 use std::env;
 use std::fs;
@@ -85,7 +85,7 @@ fn print_help() {
 /// `use std` is handled via embedded runtime; other `use` statements pass through.
 fn compile_source(source: &str, raw: bool) -> Result<String, String> {
     use std::collections::HashMap;
-    let tokens = lexer::lex(source).map_err(|e| format!("Lex error: {}", e))?;
+    let tokens = lexer_hom::lex(source.to_string()).map_err(|e| format!("Lex error: {}", e))?;
     let ast = parser::parse(tokens).map_err(|e| format!("Parse error: {}", e))?;
     let sema_errs = sema_hom::sema_analyze_skip_undef(ast.clone(), Vec::new());
     if !sema_errs.is_empty() {

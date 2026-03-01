@@ -475,7 +475,7 @@ pub fn ls_read_char_lit(mut s: LexState) -> (LexState, char) {
 pub fn ls_read_number(mut s: LexState) -> (LexState, Token) {
     let start = s.i as usize;
     let n = s.chars.len();
-    while s.i as usize < n
+    while (s.i as usize) < n
         && (s.chars[s.i as usize].is_ascii_digit() || s.chars[s.i as usize] == '.')
     {
         s.i += 1;
@@ -512,7 +512,7 @@ pub fn ls_read_number(mut s: LexState) -> (LexState, Token) {
 pub fn ls_read_ident(mut s: LexState) -> (LexState, Token) {
     let start = s.i as usize;
     let n = s.chars.len();
-    while s.i as usize < n
+    while (s.i as usize) < n
         && (s.chars[s.i as usize].is_alphanumeric() || s.chars[s.i as usize] == '_')
     {
         s.i += 1;

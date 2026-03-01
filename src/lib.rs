@@ -58,6 +58,13 @@ pub mod lexer;
 pub mod parser;
 pub mod resolver;
 
+// ── lexer_hom — tokeniser compiled from lexer.hom ────────────────────────────
+pub mod lexer_hom {
+    use crate::dep::*;
+    use crate::runtime::*;
+    include!(concat!(env!("OUT_DIR"), "/lexer.rs"));
+}
+
 // ── sema_hom — semantic analysis compiled from sema.hom ──────────────────────
 pub mod sema_hom {
     use crate::dep::*;

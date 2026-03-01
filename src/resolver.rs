@@ -14,7 +14,7 @@
 /// .rs deps are fully expanded: any `include!("...")` within them is
 /// recursively resolved and inlined, so the final output is self-contained.
 use crate::ast::*;
-use crate::{codegen_hom, embedded_rs, lexer, parser, sema_hom};
+use crate::{codegen_hom, embedded_rs, lexer_hom, parser, sema_hom};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -146,7 +146,7 @@ impl Resolver {
 
                 let source = std::fs::read_to_string(&canonical)
                     .map_err(|e| format!("Cannot read {}: {}", canonical.display(), e))?;
-                let tokens = lexer::lex(&source)
+                let tokens = lexer_hom::lex(source.clone())
                     .map_err(|e| format!("{}: Lex error: {}", canonical.display(), e))?;
                 let ast = parser::parse(tokens)
                     .map_err(|e| format!("{}: Parse error: {}", canonical.display(), e))?;
