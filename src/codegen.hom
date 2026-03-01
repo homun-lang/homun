@@ -148,8 +148,19 @@ cg_general_call := (i: int, sc: Scope, f: Expr, args: @[Expr]) -> str {
   n := len(args)
   arg_strs := @[]
   ai := 0
+  fn_name := if (expr_kind(f) == "Var") do { expr_var_name(f) } else { "" }
   while (ai < n) do {
-    push(arg_strs, cg_clone_arg(i, sc, args[ai]))
+    arg_s := if (fn_name != "" and is_param_mutable_in_call(fn_name, ai)) do {
+      ak := expr_kind(args[ai])
+      if (ak == "Var") do {
+        "&mut " + expr_var_name(args[ai])
+      } else {
+        "&mut (" + cg_expr(i, sc, args[ai]) + ")"
+      }
+    } else {
+      cg_clone_arg(i, sc, args[ai])
+    }
+    push(arg_strs, arg_s)
     ai := ai + 1
   }
   cg_expr(i, sc, f) + "(" + join(arg_strs, ", ") + ")"
@@ -869,6 +880,7 @@ cg_top_fn := (i: int, name: str, params: @[Param], ret_ty: Option<TypeExpr>, voi
   }
   scope0 := scope_from_list(param_names)
   param_str := codegen_params_mut(params)
+  register_fn_sig(name, params)
   generics := infer_generics(params)
   gen_str := generics_str(generics)
   ret_str := match void_mark {
