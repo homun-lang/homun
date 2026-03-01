@@ -54,9 +54,7 @@ pub mod dep;
 
 // ── Compiler pipeline modules ────────────────────────────────────────────────
 pub mod ast;
-pub mod lexer;
 pub mod parser;
-pub mod resolver;
 
 // ── lexer_hom — tokeniser compiled from lexer.hom ────────────────────────────
 pub mod lexer_hom {

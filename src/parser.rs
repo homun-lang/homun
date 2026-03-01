@@ -1,6 +1,6 @@
 /// Parser: recursive-descent Pratt parser → AST
 use crate::ast::*;
-use crate::lexer::{Token, TokenKind};
+use crate::lexer_hom::{Token, TokenKind};
 
 pub fn parse(tokens: Vec<Token>) -> Result<Program, String> {
     let mut p = Parser { tokens, pos: 0 };

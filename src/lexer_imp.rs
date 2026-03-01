@@ -1,12 +1,12 @@
-// lexer_imp.rs — Type re-exports and helper accessors for lexer.hom.
+// lexer_imp.rs — Type definitions and helper accessors for lexer.hom.
 //
 // Importing this file via `use lexer_imp` in lexer.hom sets has_rs_dep=true
 // in the homunc sema checker, disabling undefined-reference checks for dep/*
 // functions and runtime functions that are available at include!() time in
 // lib.rs but unknown to homunc's static checker.
 //
-// Re-exports:
-//   Pos, Token, TokenKind   — from crate::lexer (struct/enum defs stay in Rust)
+// Type definitions:
+//   Pos, Token, TokenKind   — lexer types (defined here)
 //
 // Pos constructors / accessors:
 //   make_pos(line, col) -> Pos          — i64 args (Homun int → usize cast)
@@ -41,7 +41,80 @@
 //   is_whitespace(c) -> bool
 //   is_newline(c) -> bool
 
-pub use crate::lexer::{Pos, Token, TokenKind};
+/// Lexer: type definitions for Homun tokens.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pos {
+    pub line: usize,
+    pub col: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub pos: Pos,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenKind {
+    // Literals
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    Str(String),
+    Char(char),
+    None,
+    // Identifiers & Keywords
+    Ident(String),
+    Use,
+    Struct,
+    Enum,
+    For,
+    In,
+    While,
+    Do,
+    If,
+    Else,
+    Match,
+    Break,
+    Continue,
+    And,
+    Or,
+    Not,
+    As,
+    Rec,
+    // Operators
+    Assign,   // :=
+    Arrow,    // ->
+    FatArrow, // =>
+    Pipe,     // |
+    Dot,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Eq,  // ==
+    Neq, // !=
+    Lt,
+    Gt,
+    Le, // <=
+    Ge, // >=
+    Colon,
+    Comma,
+    Semi,
+    Underscore,
+    At,
+    Question,
+    // Delimiters
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    Eof,
+}
 
 // ── Pos constructors / accessors ─────────────────────────────────────────────
 

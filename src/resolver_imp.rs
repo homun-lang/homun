@@ -5,8 +5,8 @@
 // functions and runtime functions that are available at include!() time in
 // lib.rs but unknown to homunc's static checker.
 //
-// Re-exports:
-//   ResolvedFile, ResolvedProgram  — from crate::resolver (struct defs stay in Rust)
+// Type definitions:
+//   ResolvedFile, ResolvedProgram  — resolver output types (defined here)
 //
 // Types:
 //   Found         — result of find_dep() with constructors and accessors
@@ -48,7 +48,20 @@
 //   expand_rs_includes(src, base_dir) -> Result<String, String>
 //   parse_include_line(line)          -> Option<String>
 
-pub use crate::resolver::{ResolvedFile, ResolvedProgram};
+/// A single compiled file's output plus its exported names.
+#[derive(Clone)]
+pub struct ResolvedFile {
+    pub path: std::path::PathBuf,
+    pub rust_code: String,
+    pub exports: std::collections::HashSet<String>,
+}
+
+/// Result of resolving an entire dependency graph.
+#[derive(Clone)]
+pub struct ResolvedProgram {
+    /// Compiled fragments in topological order (leaves first).
+    pub files: Vec<ResolvedFile>,
+}
 
 // ── Return type aliases for resolver.hom ─────────────────────────────────────
 // Homun generates bare `-> TypeName` return annotations. These aliases give
@@ -410,12 +423,12 @@ pub fn find_dep_result(dir: String, name: String) -> Result<(String, String), St
 }
 
 /// Lex source text using the compiled lexer_hom module.
-pub fn do_lex(source: String) -> Result<Vec<crate::lexer::Token>, String> {
+pub fn do_lex(source: String) -> Result<Vec<crate::lexer_hom::Token>, String> {
     crate::lexer_hom::lex(source)
 }
 
 /// Parse a token list using the hand-written parser.
-pub fn do_parse(tokens: Vec<crate::lexer::Token>) -> Result<Vec<Stmt>, String> {
+pub fn do_parse(tokens: Vec<crate::lexer_hom::Token>) -> Result<Vec<Stmt>, String> {
     crate::parser::parse(tokens)
 }
 
