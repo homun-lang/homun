@@ -193,19 +193,12 @@ The `Sema` pass enforces Homun's rules **before** codegen:
 ```
 Homun-Lang/
 ├── Cargo.toml
-├── build.rs             — sets HOMUN_VERSION from git tag or env var
 ├── Compiler.md
 ├── Dockerfile           — cross-compilation (linux x86_64, aarch64, windows)
 ├── Dockerfile.wasm      — WASM build (wasm32-wasi)
-├── runtime/
-│   ├── builtin.rs       — runtime helpers (embedded in compiler output)
-│   └── std/             — standard library (embedded in compiler binary)
-│       ├── mod.rs
-│       ├── str.rs
-│       ├── math.rs
-│       └── collection.rs
 ├── src/
 │   ├── main.rs          — CLI entry point, preamble, stdin/file compilation
+│   ├── build.rs         — sets HOMUN_VERSION from git tag or env var
 │   ├── lexer.rs         — tokeniser
 │   ├── ast.rs           — abstract syntax tree types
 │   ├── parser.rs        — recursive-descent parser
@@ -214,6 +207,7 @@ Homun-Lang/
 │   └── codegen.rs       — Rust code emitter
 └── _site/
     ├── index.html       — WASM playground
+    ├── llm.txt          — doc for llm
     └── examples/
         ├── *.hom        — example Homun programs
         └── ext/         — extended library (.rs)

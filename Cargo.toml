@@ -2,6 +2,7 @@
 name = "homunc"
 version = "0.62.0"
 edition = "2024"
+build = "src/build.rs"
 
 [[bin]]
 name = "homunc"
