@@ -663,14 +663,23 @@ impl Parser {
                 let name = n.clone();
                 if self.consume(&TokenKind::Colon) {
                     let ty = self.parse_type_expr()?;
-                    Ok(Param { name, ty: Some(ty) })
+                    Ok(Param {
+                        name,
+                        ty: Some(ty),
+                        mutable: false,
+                    })
                 } else {
-                    Ok(Param { name, ty: None })
+                    Ok(Param {
+                        name,
+                        ty: None,
+                        mutable: false,
+                    })
                 }
             }
             TokenKind::Underscore => Ok(Param {
                 name: "_".to_string(),
                 ty: None,
+                mutable: false,
             }),
             _ => Err(format!("Expected param name, got {:?}", t.kind)),
         }

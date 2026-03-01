@@ -13,7 +13,9 @@
 pub fn stmt_kind(s: Stmt) -> String {
     match s {
         Stmt::Bind(_, _) => "Bind".to_string(),
+        Stmt::BindMut(_, _) => "BindMut".to_string(),
         Stmt::BindPat(_, _) => "BindPat".to_string(),
+        Stmt::BindPatMut(_, _) => "BindPatMut".to_string(),
         Stmt::Assign(_, _) => "Assign".to_string(),
         Stmt::Use(_) => "Use".to_string(),
         Stmt::StructDef(_, _) => "StructDef".to_string(),
@@ -89,6 +91,22 @@ pub fn stmt_bind_expr(s: Stmt) -> Expr {
     }
 }
 
+/// Returns the name from Stmt::BindMut.
+pub fn stmt_bind_mut_name(s: Stmt) -> String {
+    match s {
+        Stmt::BindMut(n, _) => n,
+        _ => panic!("stmt_bind_mut_name: not BindMut"),
+    }
+}
+
+/// Returns the expression from Stmt::BindMut.
+pub fn stmt_bind_mut_expr(s: Stmt) -> Expr {
+    match s {
+        Stmt::BindMut(_, e) => e,
+        _ => panic!("stmt_bind_mut_expr: not BindMut"),
+    }
+}
+
 /// Returns the pattern from Stmt::BindPat.
 pub fn stmt_bindpat_pat(s: Stmt) -> Pat {
     match s {
@@ -102,6 +120,22 @@ pub fn stmt_bindpat_expr(s: Stmt) -> Expr {
     match s {
         Stmt::BindPat(_, e) => e,
         _ => panic!("stmt_bindpat_expr: not BindPat"),
+    }
+}
+
+/// Returns the pattern from Stmt::BindPatMut.
+pub fn stmt_bindpat_mut_pat(s: Stmt) -> Pat {
+    match s {
+        Stmt::BindPatMut(p, _) => p,
+        _ => panic!("stmt_bindpat_mut_pat: not BindPatMut"),
+    }
+}
+
+/// Returns the expression from Stmt::BindPatMut.
+pub fn stmt_bindpat_mut_expr(s: Stmt) -> Expr {
+    match s {
+        Stmt::BindPatMut(_, e) => e,
+        _ => panic!("stmt_bindpat_mut_expr: not BindPatMut"),
     }
 }
 
@@ -594,6 +628,11 @@ pub fn param_name(p: Param) -> String {
 /// Returns the optional type annotation from a Param.
 pub fn param_ty(p: Param) -> Option<TypeExpr> {
     p.ty
+}
+
+/// Returns true if the parameter is a mutable reference parameter (::=).
+pub fn param_is_mutable(p: Param) -> bool {
+    p.mutable
 }
 
 // ─── Literal value accessors (Phase 2 / codegen) ─────────────────────────────
