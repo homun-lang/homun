@@ -383,6 +383,56 @@ pub fn find_dep(dir: String, name: String) -> (String, String, String) {
     }
 }
 
+// ── Pipeline wrappers — called from resolver.hom ─────────────────────────────
+//
+// These delegate to the compiled .hom modules and crate-level functions.
+// They are only valid when included inside the resolver_hom module in lib.rs
+// (after R3 wiring), where crate::lexer_hom, crate::parser, etc. are defined.
+
+/// find_dep wrapper that returns Result instead of (kind, path, err) triple.
+pub fn find_dep_result(dir: String, name: String) -> Result<(String, String), String> {
+    let (kind, path, err) = find_dep(dir, name);
+    if !err.is_empty() {
+        Err(err)
+    } else {
+        Ok((kind, path))
+    }
+}
+
+/// Lex source text using the compiled lexer_hom module.
+pub fn do_lex(source: String) -> Result<Vec<crate::lexer::Token>, String> {
+    crate::lexer_hom::lex(source)
+}
+
+/// Parse a token list using the hand-written parser.
+pub fn do_parse(tokens: Vec<crate::lexer::Token>) -> Result<Vec<Stmt>, String> {
+    crate::parser::parse(tokens)
+}
+
+/// Run semantic analysis via sema_hom.  If skip_undef is true, undefined
+/// reference checks are suppressed (used when .rs deps are present).
+pub fn do_sema(ast: Vec<Stmt>, imported_list: Vec<String>, skip_undef: bool) -> Vec<String> {
+    if skip_undef {
+        crate::sema_hom::sema_analyze_skip_undef(ast, imported_list)
+    } else {
+        crate::sema_hom::sema_analyze(ast, imported_list)
+    }
+}
+
+/// Run code generation via codegen_hom.
+pub fn do_codegen(
+    ast: Vec<Stmt>,
+    hom_names: std::collections::HashSet<String>,
+    rs_content: std::collections::HashMap<String, String>,
+) -> String {
+    crate::codegen_hom::codegen_program_with_resolved(ast, hom_names, rs_content)
+}
+
+/// Look up an embedded runtime library by name.
+pub fn do_embedded_rs(name: String) -> Option<String> {
+    crate::embedded_rs(&name)
+}
+
 // ── expand_rs_file / expand_rs_includes / parse_include_line ─────────────────
 // Kept in Rust because they use PathBuf operations and recursion.
 
