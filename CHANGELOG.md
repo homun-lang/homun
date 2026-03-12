@@ -6,6 +6,14 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.70 — Self-Hosted Source Upgrade & Old-Syntax Removal
+
+- Converted all `src/*.hom` to new syntax: removed `do` from `if`/`for`/`while`, `break => val` → `=> val`, `param ::= Type` → `param::Type`
+- Removed old-syntax compatibility from parser: `do` token no longer accepted after control flow, `break =>` no longer parsed, `name ::= Type` param form removed
+- All 5 self-hosted modules (`lexer`, `codegen`, `sema`, `resolver`, `main`) now use new syntax exclusively
+
+---
+
 ### v0.69 — Syntax Overhaul: EarlyReturn, Optional `do`, New Param Forms
 
 - Added `EarlyReturn(Box<Expr>)` to AST and `=> expr` early-return syntax
