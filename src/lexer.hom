@@ -27,13 +27,13 @@ lex := (source: str) -> Result<@[Token], str> {
   state := make_lex_state(source)
   tokens := tokens_new()
 
-  while (ls_should_continue(state)) do {
+  while (ls_should_continue(state)) {
     c   := ls_cur(state)
     pos := ls_pos(state)
 
     // ── Whitespace ──────────────────────────────────────────────────────────
-    if (is_whitespace(c)) do {
-      if (is_newline(c)) do {
+    if (is_whitespace(c)) {
+      if (is_newline(c)) {
         state := ls_advance_newline(state)
       } else {
         state := ls_advance_col(state, 1)
@@ -41,44 +41,44 @@ lex := (source: str) -> Result<@[Token], str> {
     } else {
 
       // ── Line comment: // … ────────────────────────────────────────────────
-      if (c == "/" and ls_peek(state, 1) == "/") do {
+      if (c == "/" and ls_peek(state, 1) == "/") {
         state := ls_skip_line_comment(state)
       } else {
 
         // ── Block comment: /* … */ ───────────────────────────────────────────
-        if (c == "/" and ls_peek(state, 1) == "*") do {
+        if (c == "/" and ls_peek(state, 1) == "*") {
           state := ls_skip_block_comment(state)
         } else {
 
           // ── String literal: "…" ─────────────────────────────────────────────
-          if (c == "\"") do {
+          if (c == "\"") {
             new_state, s := ls_read_string(state)
             state := new_state
-            if (not ls_has_err(state)) do {
+            if (not ls_has_err(state)) {
               tokens := tokens_push(tokens, make_token_str(s, pos))
             }
           } else {
 
             // ── Char literal: '…' ───────────────────────────────────────────
-            if (c == "'") do {
+            if (c == "'") {
               new_state, ch := ls_read_char_lit(state)
               state := new_state
-              if (not ls_has_err(state)) do {
+              if (not ls_has_err(state)) {
                 tokens := tokens_push(tokens, make_token_char(ch, pos))
               }
             } else {
 
               // ── Number literal: digits ────────────────────────────────────
-              if (is_digit(c)) do {
+              if (is_digit(c)) {
                 new_state, tok := ls_read_number(state)
                 state := new_state
-                if (not ls_has_err(state)) do {
+                if (not ls_has_err(state)) {
                   tokens := tokens_push(tokens, tok)
                 }
               } else {
 
                 // ── Identifier / keyword: alpha start ────────────────────────
-                if (is_alpha(c)) do {
+                if (is_alpha(c)) {
                   new_state, tok := ls_read_ident(state)
                   state := new_state
                   tokens := tokens_push(tokens, tok)
@@ -86,14 +86,14 @@ lex := (source: str) -> Result<@[Token], str> {
 
                   // ── Multi-char operators (:=, ->, =>, ==, !=, <=, >=) ─────
                   multi_kind, multi_n := ls_try_multi_op(state)
-                  if (multi_n > 0) do {
+                  if (multi_n > 0) {
                     tokens := tokens_push(tokens, make_token(multi_kind, pos))
                     state  := ls_advance_col(state, multi_n)
                   } else {
 
                     // ── Single-char operators ─────────────────────────────────
                     single_kind := ls_try_single_op(c)
-                    if (single_kind != "") do {
+                    if (single_kind != "") {
                       tokens := tokens_push(tokens, make_token(single_kind, pos))
                       state  := ls_advance_col(state, 1)
                     } else {
@@ -112,7 +112,7 @@ lex := (source: str) -> Result<@[Token], str> {
     }
   }
 
-  if (ls_has_err(state)) do {
+  if (ls_has_err(state)) {
     Err(ls_get_err(state))
   } else {
     tokens := tokens_push(tokens, make_token("Eof", ls_pos(state)))
