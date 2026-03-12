@@ -676,17 +676,8 @@ impl Parser {
         match &t.kind {
             TokenKind::Ident(n) => {
                 let name = n.clone();
-                // name::=expr  — mutable param with default
-                if self.consume(&TokenKind::MutAssign) {
-                    let default = self.parse_expr()?;
-                    Ok(Param {
-                        name,
-                        ty: None,
-                        mutable: true,
-                        default: Some(default),
-                    })
                 // name::Type   — mutable param, no default
-                } else if self.consume(&TokenKind::DoubleColon) {
+                if self.consume(&TokenKind::DoubleColon) {
                     let ty = self.parse_type_expr()?;
                     Ok(Param {
                         name,
@@ -830,7 +821,6 @@ impl Parser {
         self.expect(&TokenKind::LParen)?;
         let cond = self.parse_expr()?;
         self.expect(&TokenKind::RParen)?;
-        self.consume(&TokenKind::Do);
         let then_stmts = self.parse_block_stmts_braced()?;
         let (ts, te) = Self::split_block(then_stmts);
         let else_clause = if self.check(&TokenKind::Else) {
@@ -998,7 +988,6 @@ impl Parser {
         };
         self.expect(&TokenKind::In)?;
         let iter = self.parse_expr()?;
-        self.consume(&TokenKind::Do);
         let stmts = self.parse_block_stmts_braced()?;
         let (ss, fe) = Self::split_block(stmts);
         Ok(Expr::For(var_name, Box::new(iter), ss, Some(Box::new(fe))))
@@ -1009,7 +998,6 @@ impl Parser {
         self.expect(&TokenKind::LParen)?;
         let cond = self.parse_expr()?;
         self.expect(&TokenKind::RParen)?;
-        self.consume(&TokenKind::Do);
         let stmts = self.parse_block_stmts_braced()?;
         let (ss, fe) = Self::split_block(stmts);
         Ok(Expr::While(Box::new(cond), ss, Some(Box::new(fe))))
@@ -1017,15 +1005,7 @@ impl Parser {
 
     fn parse_break_expr(&mut self) -> Result<Expr, String> {
         self.expect(&TokenKind::Break)?;
-        // Old syntax: `break => val` kept as Break(Some(val)) for backward compat
-        // (codegen emits `return val`). New syntax uses standalone `=> val`.
-        if self.check(&TokenKind::FatArrow) {
-            self.advance();
-            let e = self.parse_expr()?;
-            Ok(Expr::Break(Some(Box::new(e))))
-        } else {
-            Ok(Expr::Break(None))
-        }
+        Ok(Expr::Break(None))
     }
 
     fn parse_inline_block(&mut self) -> Result<Expr, String> {
