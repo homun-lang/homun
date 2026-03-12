@@ -19,8 +19,8 @@ has_flag := (args: @[str], flag: str) -> bool {
   n := len(args)
   i := 0
   found := false
-  while (i < n) do {
-    if (args[i] == flag) do { found := true }
+  while (i < n) {
+    if (args[i] == flag) { found := true }
     i := i + 1
   }
   found
@@ -34,8 +34,8 @@ filter_flags := (args: @[str], f1: str, f2: str) -> @[str] {
   n := len(args)
   result := @[]
   i := 0
-  while (i < n) do {
-    if (args[i] != f1 and args[i] != f2) do {
+  while (i < n) {
+    if (args[i] != f1 and args[i] != f2) {
       push(result, args[i])
     }
     i := i + 1
@@ -117,24 +117,24 @@ main := () -> _ {
   raw_final := raw or module
   filtered := filter_flags(args, "--raw", "--module")
   n := len(filtered)
-  if (n == 0) do {
+  if (n == 0) {
     compile_from_stdin(raw_final)
   } else {
     first := filtered[0]
-    if (first == "--help" or first == "-h") do {
+    if (first == "--help" or first == "-h") {
       print_help()
     } else {
-      if (first == "--version" or first == "-v") do {
+      if (first == "--version" or first == "-v") {
         ver := homunc_version()
         print("homunc ${ver} — Homun to Rust compiler")
       } else {
-        if (n == 1) do {
+        if (n == 1) {
           compile_to_stdout(first, raw_final, module)
         } else {
-          if (n == 3) do {
+          if (n == 3) {
             second := filtered[1]
             third := filtered[2]
-            if (second == "-o") do {
+            if (second == "-o") {
               compile_to_file(first, third, raw_final, module)
             } else {
               eprint_str("Usage: homunc [--raw|--module] [input.hom] [-o output.rs]")
