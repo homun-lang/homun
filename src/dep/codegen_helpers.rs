@@ -192,13 +192,17 @@ use std::collections::HashMap;
 thread_local! {
     static FN_MUT_PARAMS: RefCell<HashMap<String, Vec<bool>>> =
         RefCell::new(HashMap::new());
+    static FN_DEFAULTS: RefCell<HashMap<String, Vec<Option<Expr>>>> =
+        RefCell::new(HashMap::new());
 }
 
-/// Register a function name with its mutable-flag list.
+/// Register a function name with its mutable-flag list and default expressions.
 /// Called from cg_top_fn when emitting a top-level function definition.
 pub fn register_fn_sig(name: String, params: Vec<Param>) {
     let flags: Vec<bool> = params.iter().map(|p| p.mutable).collect();
-    FN_MUT_PARAMS.with(|m| m.borrow_mut().insert(name, flags));
+    let defaults: Vec<Option<Expr>> = params.into_iter().map(|p| p.default).collect();
+    FN_MUT_PARAMS.with(|m| m.borrow_mut().insert(name.clone(), flags));
+    FN_DEFAULTS.with(|m| m.borrow_mut().insert(name, defaults));
 }
 
 /// Returns true if the arg at index arg_idx of function fn_name is a mutable ref param.
@@ -210,6 +214,45 @@ pub fn is_param_mutable_in_call(fn_name: String, arg_idx: i32) -> bool {
             .and_then(|flags| flags.get(arg_idx as usize).copied())
             .unwrap_or(false)
     })
+}
+
+/// Returns the list of default expressions for a known function.
+/// Missing or unknown functions return an empty list.
+pub fn get_fn_defaults(fn_name: String) -> Vec<Option<Expr>> {
+    FN_DEFAULTS.with(|m| {
+        m.borrow()
+            .get(&fn_name)
+            .cloned()
+            .unwrap_or_default()
+    })
+}
+
+/// Fill in missing trailing args using registered defaults.
+/// If `args` has fewer elements than the function's param list and the missing
+/// trailing params all have defaults, appends those defaults.
+/// Returns the extended arg list (or the original if nothing to fill).
+pub fn fill_default_args(fn_name: String, args: Vec<Expr>) -> Vec<Expr> {
+    let defaults = get_fn_defaults(fn_name);
+    if defaults.is_empty() {
+        return args;
+    }
+    let n_args = args.len();
+    let n_params = defaults.len();
+    if n_args >= n_params {
+        return args;
+    }
+    // Check that all missing trailing params have defaults
+    let missing = &defaults[n_args..n_params];
+    if missing.iter().any(|d| d.is_none()) {
+        return args; // can't fill — missing required param, return as-is
+    }
+    let mut extended = args;
+    for default_opt in missing {
+        if let Some(default_expr) = default_opt.clone() {
+            extended.push(default_expr);
+        }
+    }
+    extended
 }
 
 

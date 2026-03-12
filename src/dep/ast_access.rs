@@ -561,6 +561,14 @@ pub fn expr_tryunwrap_expr(e: Expr) -> Expr {
     }
 }
 
+/// Returns the value expression from Expr::EarlyReturn.
+pub fn expr_earlyreturn_val(e: Expr) -> Expr {
+    match e {
+        Expr::EarlyReturn(val) => *val,
+        _ => panic!("expr_earlyreturn_val: not EarlyReturn"),
+    }
+}
+
 // ─── Pat accessors ────────────────────────────────────────────────────────────
 
 /// Returns the variable name from Pat::Var.
@@ -635,6 +643,11 @@ pub fn param_ty(p: Param) -> Option<TypeExpr> {
 /// Returns true if the parameter is a mutable reference parameter (::=).
 pub fn param_is_mutable(p: Param) -> bool {
     p.mutable
+}
+
+/// Returns the optional default expression from a Param.
+pub fn param_default(p: Param) -> Option<Expr> {
+    p.default
 }
 
 // ─── Literal value accessors (Phase 2 / codegen) ─────────────────────────────

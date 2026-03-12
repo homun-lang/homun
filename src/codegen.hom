@@ -145,20 +145,25 @@ cg_struct_val := (i: int, sc: Scope, e: Expr) -> str {
 // Emit f(clone_args) for a general function call.
 
 cg_general_call := (i: int, sc: Scope, f: Expr, args: @[Expr]) -> str {
-  n := len(args)
+  fn_name := if (expr_kind(f) == "Var") do { expr_var_name(f) } else { "" }
+  filled_args := if (fn_name != "") do {
+    fill_default_args(fn_name, args)
+  } else {
+    args
+  }
+  n := len(filled_args)
   arg_strs := @[]
   ai := 0
-  fn_name := if (expr_kind(f) == "Var") do { expr_var_name(f) } else { "" }
   while (ai < n) do {
     arg_s := if (fn_name != "" and is_param_mutable_in_call(fn_name, ai)) do {
-      ak := expr_kind(args[ai])
+      ak := expr_kind(filled_args[ai])
       if (ak == "Var") do {
-        "&mut " + expr_var_name(args[ai])
+        "&mut " + expr_var_name(filled_args[ai])
       } else {
-        "&mut (" + cg_expr(i, sc, args[ai]) + ")"
+        "&mut (" + cg_expr(i, sc, filled_args[ai]) + ")"
       }
     } else {
-      cg_clone_arg(i, sc, args[ai])
+      cg_clone_arg(i, sc, filled_args[ai])
     }
     push(arg_strs, arg_s)
     ai := ai + 1
@@ -566,6 +571,10 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       data := expr_saveron_data(expr)
       path := expr_saveron_path(expr)
       "std::fs::write(" + cg_expr(i, sc, path) + ", ron::to_string(&" + cg_expr(i, sc, data) + ").unwrap()).unwrap()"
+    }
+    "EarlyReturn" => {
+      val := expr_earlyreturn_val(expr)
+      "return " + cg_expr(i, sc, val)
     }
     "TryUnwrap" => cg_expr(i, sc, expr_tryunwrap_expr(expr)) + "?"
     "Range" => {
