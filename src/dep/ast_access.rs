@@ -57,6 +57,7 @@ pub fn expr_kind(e: Expr) -> String {
         Expr::SaveRon(_, _) => "SaveRon".to_string(),
         Expr::Range(_, _, _) => "Range".to_string(),
         Expr::TryUnwrap(_) => "TryUnwrap".to_string(),
+        Expr::EarlyReturn(_) => "EarlyReturn".to_string(),
     }
 }
 

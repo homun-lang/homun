@@ -681,6 +681,7 @@ impl Parser {
                         name,
                         ty: Some(ty),
                         mutable: true,
+                        default: None,
                     })
                 } else if self.consume(&TokenKind::Colon) {
                     let ty = self.parse_type_expr()?;
@@ -688,12 +689,14 @@ impl Parser {
                         name,
                         ty: Some(ty),
                         mutable: false,
+                        default: None,
                     })
                 } else {
                     Ok(Param {
                         name,
                         ty: None,
                         mutable: false,
+                        default: None,
                     })
                 }
             }
@@ -701,6 +704,7 @@ impl Parser {
                 name: "_".to_string(),
                 ty: None,
                 mutable: false,
+                default: None,
             }),
             _ => Err(format!("Expected param name, got {:?}", t.kind)),
         }

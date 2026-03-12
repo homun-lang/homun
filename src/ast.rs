@@ -116,6 +116,9 @@ pub enum Expr {
 
     // Try-unwrap postfix `?`
     TryUnwrap(Box<Expr>),
+
+    // Early return: `=> expr` (new v0.69 syntax)
+    EarlyReturn(Box<Expr>),
 }
 
 // ─────────────────────────────────────────
@@ -194,4 +197,5 @@ pub struct Param {
     pub name: Name,
     pub ty: Option<TypeExpr>,
     pub mutable: bool,
+    pub default: Option<Expr>,
 }
