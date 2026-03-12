@@ -86,13 +86,9 @@ impl Parser {
         match &t.kind {
             TokenKind::Ident(n) => {
                 let mut path = vec![n.clone()];
-                if self.check(&TokenKind::Colon) {
-                    self.advance();
-                    if self.check(&TokenKind::Colon) {
-                        self.advance();
-                        let rest = self.parse_mod_path()?;
-                        path.extend(rest);
-                    }
+                if self.consume(&TokenKind::DoubleColon) {
+                    let rest = self.parse_mod_path()?;
+                    path.extend(rest);
                 }
                 Ok(path)
             }

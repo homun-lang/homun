@@ -29,7 +29,7 @@
 //   make_token(kind, pos) -> Token
 //     Accepts: "Use","Struct","Enum","For","In","While","Do","If","Else",
 //              "Match","Break","Continue","And","Or","Not","As","Rec",
-//              "Assign","Arrow","FatArrow","Pipe","Dot","Plus","Minus",
+//              "MutAssign","DoubleColon","Assign","Arrow","FatArrow","Pipe","Dot","Plus","Minus",
 //              "Star","Slash","Percent","Eq","Neq","Lt","Gt","Le","Ge",
 //              "Colon","Comma","Semi","Underscore","At","Question",
 //              "LParen","RParen","LBrace","RBrace","LBracket","RBracket","Eof"
@@ -84,8 +84,9 @@ pub enum TokenKind {
     As,
     Rec,
     // Operators
-    MutAssign, // ::=
-    Assign,    // :=
+    MutAssign,   // ::=
+    DoubleColon, // ::
+    Assign,      // :=
     Arrow,     // ->
     FatArrow,  // =>
     Pipe,      // |
@@ -239,6 +240,7 @@ pub fn make_token(kind: String, pos: Pos) -> Token {
         "Rec" => TokenKind::Rec,
         // Operators
         "MutAssign" => TokenKind::MutAssign,
+        "DoubleColon" => TokenKind::DoubleColon,
         "Assign" => TokenKind::Assign,
         "Arrow" => TokenKind::Arrow,
         "FatArrow" => TokenKind::FatArrow,
@@ -640,6 +642,9 @@ pub fn ls_try_multi_op(s: LexState) -> (String, i64) {
     let c2 = s.chars.get(i + 2).copied().unwrap_or('\0');
     if (c, c1, c2) == (':', ':', '=') {
         return ("MutAssign".to_string(), 3);
+    }
+    if (c, c1) == (':', ':') {
+        return ("DoubleColon".to_string(), 2);
     }
     match (c, c1) {
         (':', '=') => ("Assign".to_string(), 2),
