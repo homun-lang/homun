@@ -6,7 +6,7 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
-### v0.71 — Match Arm Arrow Syntax (`=>` → `->`)
+### v0.71 — 2026-03-17 — Match Arm Arrow Syntax (`=>` → `->`)
 
 - Parser now accepts both `->` (Arrow) and `=>` (FatArrow) in match arms — full backward compatibility
 - All `_site/examples/*.hom` match arms updated to `->` syntax
