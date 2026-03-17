@@ -53,10 +53,10 @@ fizz_buzz := (n: int) -> @[str] {
   result := @[]
   for i in range(1, n+1) {
     value := match (i % 15, i % 3, i % 5) {
-      0, _, _ => "FizzBuzz"
-      _, 0, _ => "Fizz"
-      _, _, 0 => "Buzz"
-      _         => str(i)
+      0, _, _ -> "FizzBuzz"
+      _, 0, _ -> "Fizz"
+      _, _, 0 -> "Buzz"
+      _         -> str(i)
     }
     result := result + @[value]
   }
@@ -241,8 +241,8 @@ val := scores["alice"]     // value or none
 scores["bob"] := 99        // update or insert
 
 match scores["unknown"] {
-  none => print("not found")
-  val  => print("score: ${val}")
+  none -> print("not found")
+  val  -> print("score: ${val}")
 }
 ```
 
@@ -285,9 +285,9 @@ if (hp <= 0) { die() } else { recover() }
 
 // multi-branch
 match true {
-  _ if hp <= 0  => die()
-  _ if hp < 20  => warn()
-  _             => recover()
+  _ if hp <= 0  -> die()
+  _ if hp < 20  -> warn()
+  _             -> recover()
 }
 ```
 
@@ -299,14 +299,14 @@ Expression — result can be assigned. `_` is wildcard. Compiler warns on non-ex
 
 ```
 dmg := match element {
-  Element.Fire(power) => power * 2
-  Element.Ice(power)  => power * 1.5
-  _                   => 0
+  Element.Fire(power) -> power * 2
+  Element.Ice(power)  -> power * 1.5
+  _                   -> 0
 }
 
 match find_target(pos) {
-  none   => idle()
-  target => attack(target)
+  none   -> idle()
+  target -> attack(target)
 }
 ```
 
@@ -405,9 +405,9 @@ Direction := enum { North, South, East, West }
 Element   := enum { Fire(int), Ice(int), Neutral }
 
 result := match dir {
-  Direction.North => move(0, 1)
-  Direction.South => move(0, -1)
-  _               => idle()
+  Direction.North -> move(0, 1)
+  Direction.South -> move(0, -1)
+  _               -> idle()
 }
 ```
 

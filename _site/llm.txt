@@ -70,9 +70,9 @@ if (x > 0) { print("positive") } else { print("non-positive") }
 
 // match (expression, result can be assigned)
 result := match dir {
-  Direction.North => "up"
-  Direction.South => "down"
-  _ => "other"
+  Direction.North -> "up"
+  Direction.South -> "down"
+  _ -> "other"
 }
 
 // for loop
@@ -115,9 +115,9 @@ Direction := enum { North, South, East, West }
 Shape := enum { Rect(str), Circle(int), Diamond }
 
 match shape {
-  Shape.Rect(label) => draw_rect(label)
-  Shape.Circle(r) => draw_circle(r)
-  Shape.Diamond => draw_diamond()
+  Shape.Rect(label) -> draw_rect(label)
+  Shape.Circle(r) -> draw_circle(r)
+  Shape.Diamond -> draw_diamond()
 }
 ```
 
@@ -222,8 +222,8 @@ heap_push(h, 5, "item_a")      // priority (int), value (str)
 heap_push(h, 1, "item_b")
 result := heap_pop(h)          // Option<(int, str)> — lowest priority first
 match result {
-  Some((priority, item)) => { print("popped: ${item}") }
-  none => { print("empty") }
+  Some((priority, item)) -> { print("popped: ${item}") }
+  none -> { print("empty") }
 }
 n := heap_len(h)               // int
 empty := heap_is_empty(h)      // bool
@@ -338,10 +338,10 @@ NodeShape := enum { Rectangle, Rounded, Diamond, Circle }
 
 draw_node := (shape: NodeShape, x: int, y: int) -> _ {
   match shape {
-    NodeShape.Rectangle => draw_rect(x, y)
-    NodeShape.Rounded => draw_rounded(x, y)
-    NodeShape.Diamond => draw_diamond(x, y)
-    NodeShape.Circle => draw_circle(x, y)
+    NodeShape.Rectangle -> draw_rect(x, y)
+    NodeShape.Rounded -> draw_rounded(x, y)
+    NodeShape.Diamond -> draw_diamond(x, y)
+    NodeShape.Circle -> draw_circle(x, y)
   }
 }
 ```
