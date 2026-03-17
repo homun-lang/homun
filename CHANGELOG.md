@@ -6,6 +6,14 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.71 — Match Arm Arrow Syntax (`=>` → `->`)
+
+- Parser now accepts both `->` (Arrow) and `=>` (FatArrow) in match arms — full backward compatibility
+- All `_site/examples/*.hom` match arms updated to `->` syntax
+- README.md and `_site/llm.txt` documentation examples updated to `->` syntax
+
+---
+
 ### v0.70 — Self-Hosted Source Upgrade & Old-Syntax Removal
 
 - Converted all `src/*.hom` to new syntax: removed `do` from `if`/`for`/`while`, `break => val` → `=> val`, `param ::= Type` → `param::Type`
