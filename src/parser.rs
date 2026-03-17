@@ -863,7 +863,14 @@ impl Parser {
         } else {
             None
         };
-        self.expect(&TokenKind::FatArrow)?;
+        // Accept both -> (Arrow) and => (FatArrow) as match arm separators
+        if !self.check(&TokenKind::Arrow) && !self.check(&TokenKind::FatArrow) {
+            return Err(format!(
+                "Expected -> or => in match arm but got {:?}",
+                self.peek().kind
+            ));
+        }
+        self.advance();
         let body = self.parse_expr()?;
         Ok(MatchArm { pat, guard, body })
     }
