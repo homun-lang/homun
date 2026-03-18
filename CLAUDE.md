@@ -124,6 +124,7 @@ See `.claude/skills/claude-bot/` for the full skill, example scripts, and planni
 - Use **vMajor.Minor** format only (e.g., `v1.0`, `v1.1`, `v2.0`) — no patch level.
 - Versions may jump (e.g., `v1.1` → `v1.5` or `v1.1` → `v3.0`) — a version jump signals a huge change.
 - Each entry: version, date, and bullet list of what changed in short; not all details.
+- **Always update `Cargo.toml` version** when updating CHANGELOG.md (keep them in sync).
 
 ## Rules
 
