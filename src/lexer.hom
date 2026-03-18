@@ -1,15 +1,15 @@
-// lexer.hom — Port of lexer.rs: tokenises Homun source into @[Token].
+// lexer.hom — Tokenises Homun source into @[Token].
 //
 // Uses:
-//   lexer_imp — LexState + char-walking helpers + token constructors
+//   lexer_imp — LexState type, char-walking helpers, token constructors,
+//               keyword dispatch (ls_keyword_token)
 //
-// All inner loops (string parsing, block comment, char literal, number, ident)
-// are handled by Rust helpers in lexer_imp.rs to avoid the nested-while
-// counter-shadowing issue in Homun's codegen.
+// Inner loops (string, block comment, char literal, number, ident) are
+// implemented here in .hom. Only type definitions, token constructors,
+// and keyword→TokenKind dispatch remain in lexer_imp.rs.
 //
-// ls_cur / ls_peek return String (1-char strings) so .hom code can compare
-// with string literals — the released homunc binary does not support char
-// literals ('x') in .hom source files.
+// ls_cur / ls_peek return 1-char Strings so .hom code can compare with
+// string literals.
 //
 // Public API:
 //   lex(source: str) -> Result<@[Token], str>
@@ -18,6 +18,177 @@
 // checks for helper functions available at include!() time.
 use lexer_imp
 
+
+// ─── ls_skip_line_comment ────────────────────────────────────────────────────
+// Skip from current position to (but not including) the next newline.
+ls_skip_line_comment := (state: LexState) -> LexState {
+  while (ls_not_at_end(state) and ls_cur(state) != "\n") {
+    state := ls_advance_i_only(state, 1)
+  }
+  state
+}
+
+// ─── ls_skip_block_comment ───────────────────────────────────────────────────
+// Skip a /* ... */ block comment. Sets err if unterminated.
+ls_skip_block_comment := (state: LexState) -> LexState {
+  start_line := ls_line(state)
+  start_col  := ls_col(state)
+  // Skip opening /*
+  state := ls_advance_col(state, 2)
+
+  done := false
+  while (ls_not_at_end(state) and not done) {
+    c  := ls_cur(state)
+    c1 := ls_peek(state, 1)
+    if (c == "*" and c1 == "/") {
+      state := ls_advance_col(state, 2)
+      done := true
+    } else {
+      if (is_newline(c)) {
+        state := ls_advance_newline(state)
+      } else {
+        state := ls_advance_col(state, 1)
+      }
+    }
+  }
+
+  if (not done) {
+    state := ls_set_err(state, "Unterminated block comment at line ${start_line}, col ${start_col}")
+  }
+  state
+}
+
+// ─── ls_read_string ─────────────────────────────────────────────────────────
+// Read a "..." string literal starting at the current ".
+// Returns (new_state, content). Sets err if unterminated.
+ls_read_string := (state: LexState) -> (LexState, str) {
+  // Skip opening "
+  state := ls_advance_col(state, 1)
+  buf := str_new()
+
+  done := false
+  while (ls_not_at_end(state) and not done) {
+    ch := ls_cur(state)
+    if (ch == "\"") {
+      state := ls_advance_col(state, 1)
+      done := true
+    } else {
+      if (ch == "\\") {
+        state := ls_advance_col(state, 1)
+        if (not ls_not_at_end(state)) {
+          state := ls_set_err(state, "Unterminated string literal")
+          done := true
+        } else {
+          esc := unescape_char(ls_cur(state))
+          buf := str_push(buf, esc)
+          state := ls_advance_col(state, 1)
+        }
+      } else {
+        buf := str_push(buf, ch)
+        state := ls_advance_col(state, 1)
+      }
+    }
+  }
+
+  if (not done and not ls_has_err(state)) {
+    state := ls_set_err(state, "Unterminated string literal")
+  }
+  (state, buf)
+}
+
+// ─── ls_read_char_lit ────────────────────────────────────────────────────────
+// Read a 'x' or '\n' char literal starting at the current '.
+// Returns (new_state, char_as_string). Sets err if malformed.
+ls_read_char_lit := (state: LexState) -> (LexState, str) {
+  start_line := ls_line(state)
+  start_col  := ls_col(state)
+  // Skip opening '
+  state := ls_advance_col(state, 1)
+
+  if (not ls_not_at_end(state)) {
+    state := ls_set_err(state, "Unterminated char literal")
+    (state, str_new())
+  } else {
+    ch := ls_cur(state)
+    if (ch == "\\") {
+      state := ls_advance_col(state, 1)
+      if (not ls_not_at_end(state)) {
+        state := ls_set_err(state, "Unterminated char literal")
+        (state, str_new())
+      } else {
+        result := unescape_char(ls_cur(state))
+        state := ls_advance_col(state, 1)
+        // Expect closing '
+        if (not ls_not_at_end(state) or ls_cur(state) != "'") {
+          state := ls_set_err(state, "Unterminated char literal at line ${start_line}, col ${start_col}")
+          (state, str_new())
+        } else {
+          state := ls_advance_col(state, 1)
+          (state, result)
+        }
+      }
+    } else {
+      result := ch
+      state := ls_advance_col(state, 1)
+      // Expect closing '
+      if (not ls_not_at_end(state) or ls_cur(state) != "'") {
+        state := ls_set_err(state, "Unterminated char literal at line ${start_line}, col ${start_col}")
+        (state, str_new())
+      } else {
+        state := ls_advance_col(state, 1)
+        (state, result)
+      }
+    }
+  }
+}
+
+// ─── ls_read_number ─────────────────────────────────────────────────────────
+// Read an integer or float literal starting at the current digit.
+// Returns (new_state, token). Sets err on parse failure.
+ls_read_number := (state: LexState) -> (LexState, Token) {
+  pos := ls_pos(state)
+  start := ls_i(state)
+
+  while (ls_not_at_end(state) and (is_digit(ls_cur(state)) or ls_cur(state) == ".")) {
+    state := ls_advance_col(state, 1)
+  }
+
+  raw := ls_substr(state, start, ls_i(state))
+
+  if (str_contains(raw, ".")) {
+    ok, val := parse_float_result(raw)
+    if (ok) {
+      (state, make_token_float(val, pos))
+    } else {
+      state := ls_set_err(state, "Invalid float")
+      (state, make_token("Eof", pos))
+    }
+  } else {
+    ok, val := parse_int_result(raw)
+    if (ok) {
+      (state, make_token_int(val, pos))
+    } else {
+      state := ls_set_err(state, "Invalid int")
+      (state, make_token("Eof", pos))
+    }
+  }
+}
+
+// ─── ls_read_ident ──────────────────────────────────────────────────────────
+// Read an identifier or keyword starting at the current alphabetic char.
+// Returns (new_state, token).
+ls_read_ident := (state: LexState) -> (LexState, Token) {
+  pos   := ls_pos(state)
+  start := ls_i(state)
+
+  while (ls_not_at_end(state) and is_alnum(ls_cur(state))) {
+    state := ls_advance_col(state, 1)
+  }
+
+  word := ls_substr(state, start, ls_i(state))
+  tok  := ls_keyword_token(word, pos)
+  (state, tok)
+}
 
 // ─── lex ─────────────────────────────────────────────────────────────────────
 // Tokenise the entire source string.
@@ -64,7 +235,7 @@ lex := (source: str) -> Result<@[Token], str> {
               new_state, ch := ls_read_char_lit(state)
               state := new_state
               if (not ls_has_err(state)) {
-                tokens := tokens_push(tokens, make_token_char(ch, pos))
+                tokens := tokens_push(tokens, make_token_char_from_str(ch, pos))
               }
             } else {
 

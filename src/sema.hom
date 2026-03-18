@@ -2,7 +2,7 @@
 //
 // Ports sema.rs logic to .hom using:
 //   dep/ast_access.rs  — stmt_kind/expr_kind/pat_kind + typed accessors
-//   dep/scope.rs       — Scope (Rc<RefCell<HashSet<String>>>) wrapper
+//   dep/scope.rs       — Scope (HashSet<String>) wrapper
 //   src/sema_imp.rs    — errs_empty/errs_one/errs_join helpers + has_rs_dep trigger
 //
 // Public API (called from lib.rs mod sema_hom after P1.4 wiring):
@@ -49,7 +49,7 @@ extend_with_pat := (env: Scope, pat: Pat) -> Scope {
   result := scope_clone(env)
   k := pat_kind(pat)
   if (k == "Var") {
-    scope_insert(result, pat_var_name(pat))
+    result := scope_insert(result, pat_var_name(pat))
   }
   if (k == "Tuple") {
     pats := pat_tuple_pats(pat)
@@ -85,7 +85,7 @@ stmts_bound := (env: Scope, stmts: @[Stmt]) -> Scope {
     s := stmts[i]
     k := stmt_kind(s)
     if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef") {
-      scope_insert(result, stmt_bind_name(s))
+      result := scope_insert(result, stmt_bind_name(s))
     }
     if (k == "BindPat" or k == "BindPatMut") {
       names := if (k == "BindPat") {
@@ -95,7 +95,7 @@ stmts_bound := (env: Scope, stmts: @[Stmt]) -> Scope {
       }
       j := 0
       while (j < len(names)) {
-        scope_insert(result, names[j])
+        result := scope_insert(result, names[j])
         j := j + 1
       }
     }
@@ -119,7 +119,7 @@ check_stmts := (env: Scope, stmts: @[Stmt]) -> @[str] {
     errs := errs_join(errs, check_stmt(local_env, s))
     k := stmt_kind(s)
     if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef") {
-      scope_insert(local_env, stmt_bind_name(s))
+      local_env := scope_insert(local_env, stmt_bind_name(s))
     }
     if (k == "BindPat" or k == "BindPatMut") {
       names := if (k == "BindPat") {
@@ -129,7 +129,7 @@ check_stmts := (env: Scope, stmts: @[Stmt]) -> @[str] {
       }
       j := 0
       while (j < len(names)) {
-        scope_insert(local_env, names[j])
+        local_env := scope_insert(local_env, names[j])
         j := j + 1
       }
     }
@@ -292,7 +292,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       body_stmts := expr_for_stmts(expr)
       fe_opt     := expr_for_final(expr)
       env2       := scope_clone(env)
-      scope_insert(env2, v)
+      env2       := scope_insert(env2, v)
       iter_errs  := check_expr(env, iter)
       body_errs  := check_stmts(env2, body_stmts)
       env_final  := stmts_bound(env2, body_stmts)
@@ -338,7 +338,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       pn := len(params)
       pi := 0
       while (pi < pn) {
-        scope_insert(env2, param_name(params[pi]))
+        env2 := scope_insert(env2, param_name(params[pi]))
         pi := pi + 1
       }
       lam_errs  := check_stmts(env2, lam_stmts)
@@ -385,7 +385,7 @@ run_sema := (prog: @[Stmt], imported_list: @[str], skip_undef: bool) -> @[str] {
     s := prog[pi]
     k := stmt_kind(s)
     if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef") {
-      scope_insert(top_names, stmt_bind_name(s))
+      top_names := scope_insert(top_names, stmt_bind_name(s))
     }
     pi := pi + 1
   }

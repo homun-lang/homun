@@ -411,198 +411,12 @@ pub fn ls_set_err(s: LexState, err: String) -> LexState {
     LexState { err, ..s }
 }
 
-// ── Complex inner-loop actions (done in Rust to avoid nested-while issues) ────
+// ── Keyword dispatch (stays in Rust — constructs TokenKind enum variants) ────
 
-/// Skip from current position to (but not including) the next '\n'.
-/// Caller must handle the '\n' itself as whitespace.
-pub fn ls_skip_line_comment(mut s: LexState) -> LexState {
-    while (s.i as usize) < s.chars.len() && s.chars[s.i as usize] != '\n' {
-        s.i += 1;
-    }
-    s
-}
-
-/// Skip a `/* ... */` block comment starting at current position.
-/// Sets `err` if the comment is unterminated.
-pub fn ls_skip_block_comment(mut s: LexState) -> LexState {
-    let start_line = s.line;
-    let start_col = s.col;
-    // Skip the opening /*
-    s.i += 2;
-    s.col += 2;
-    loop {
-        if s.i as usize >= s.chars.len() {
-            s.err = format!(
-                "Unterminated block comment at line {}, col {}",
-                start_line, start_col
-            );
-            return s;
-        }
-        let c = s.chars[s.i as usize];
-        let c1 = s.chars.get(s.i as usize + 1).copied().unwrap_or('\0');
-        if c == '*' && c1 == '/' {
-            s.i += 2;
-            s.col += 2;
-            return s;
-        }
-        if c == '\n' {
-            s.line += 1;
-            s.col = 1;
-        } else {
-            s.col += 1;
-        }
-        s.i += 1;
-    }
-}
-
-/// Read a `"..."` string literal starting at the current `"`.
-/// Returns `(new_state, content)`.  Sets `err` if unterminated.
-pub fn ls_read_string(mut s: LexState) -> (LexState, String) {
-    // Skip opening "
-    s.i += 1;
-    s.col += 1;
-    let mut buf = String::new();
-    loop {
-        if s.i as usize >= s.chars.len() {
-            s.err = "Unterminated string literal".to_string();
-            return (s, buf);
-        }
-        let ch = s.chars[s.i as usize];
-        if ch == '"' {
-            s.i += 1;
-            s.col += 1;
-            return (s, buf);
-        }
-        if ch == '\\' {
-            s.i += 1;
-            s.col += 1;
-            if s.i as usize >= s.chars.len() {
-                s.err = "Unterminated string literal".to_string();
-                return (s, buf);
-            }
-            let esc = match s.chars[s.i as usize] {
-                'n' => '\n',
-                't' => '\t',
-                '\\' => '\\',
-                '"' => '"',
-                other => other,
-            };
-            buf.push(esc);
-            s.i += 1;
-            s.col += 1;
-        } else {
-            buf.push(ch);
-            s.i += 1;
-            s.col += 1;
-        }
-    }
-}
-
-/// Read a `'x'` or `'\n'` char literal starting at the current `'`.
-/// Returns `(new_state, char)`.  Sets `err` if malformed.
-pub fn ls_read_char_lit(mut s: LexState) -> (LexState, char) {
-    let start_line = s.line;
-    let start_col = s.col;
-    // Skip opening '
-    s.i += 1;
-    s.col += 1;
-    if s.i as usize >= s.chars.len() {
-        s.err = "Unterminated char literal".to_string();
-        return (s, '\0');
-    }
-    let ch = if s.chars[s.i as usize] == '\\' {
-        s.i += 1;
-        s.col += 1;
-        if s.i as usize >= s.chars.len() {
-            s.err = "Unterminated char literal".to_string();
-            return (s, '\0');
-        }
-        let esc = match s.chars[s.i as usize] {
-            'n' => '\n',
-            't' => '\t',
-            '\\' => '\\',
-            '\'' => '\'',
-            '0' => '\0',
-            other => other,
-        };
-        s.i += 1;
-        s.col += 1;
-        esc
-    } else {
-        let c = s.chars[s.i as usize];
-        s.i += 1;
-        s.col += 1;
-        c
-    };
-    if s.i as usize >= s.chars.len() || s.chars[s.i as usize] != '\'' {
-        s.err = format!(
-            "Unterminated char literal at line {}, col {}",
-            start_line, start_col
-        );
-        return (s, '\0');
-    }
-    // Skip closing '
-    s.i += 1;
-    s.col += 1;
-    (s, ch)
-}
-
-/// Read an integer or float literal starting at the current digit.
-/// Returns `(new_state, token)`.  Sets `err` on parse failure.
-pub fn ls_read_number(mut s: LexState) -> (LexState, Token) {
-    let start = s.i as usize;
-    let n = s.chars.len();
-    while (s.i as usize) < n
-        && (s.chars[s.i as usize].is_ascii_digit() || s.chars[s.i as usize] == '.')
-    {
-        s.i += 1;
-    }
-    let raw: String = s.chars[start..s.i as usize].iter().collect();
-    let raw_len = raw.len() as i64;
-    let pos = Pos {
-        line: s.line as usize,
-        col: s.col as usize,
-    };
-    let kind = if raw.contains('.') {
-        match raw.parse::<f64>() {
-            Ok(v) => TokenKind::Float(v),
-            Err(e) => {
-                s.err = format!("Invalid float: {}", e);
-                return (s, Token { kind: TokenKind::Eof, pos });
-            }
-        }
-    } else {
-        match raw.parse::<i64>() {
-            Ok(v) => TokenKind::Int(v),
-            Err(e) => {
-                s.err = format!("Invalid int: {}", e);
-                return (s, Token { kind: TokenKind::Eof, pos });
-            }
-        }
-    };
-    s.col += raw_len;
-    (s, Token { kind, pos })
-}
-
-/// Read an identifier or keyword starting at the current alphabetic char.
-/// Returns `(new_state, token)`.
-pub fn ls_read_ident(mut s: LexState) -> (LexState, Token) {
-    let start = s.i as usize;
-    let n = s.chars.len();
-    while (s.i as usize) < n
-        && (s.chars[s.i as usize].is_alphanumeric() || s.chars[s.i as usize] == '_')
-    {
-        s.i += 1;
-    }
-    let word: String = s.chars[start..s.i as usize].iter().collect();
-    let word_len = word.len() as i64;
-    let pos = Pos {
-        line: s.line as usize,
-        col: s.col as usize,
-    };
-    let kind = ls_keyword(word);
-    s.col += word_len;
-    (s, Token { kind, pos })
+/// Resolve an identifier word to a keyword Token or Ident Token.
+pub fn ls_keyword_token(s: String, pos: Pos) -> Token {
+    let kind = ls_keyword(s);
+    Token { kind, pos }
 }
 
 fn ls_keyword(s: String) -> TokenKind {
@@ -697,4 +511,92 @@ pub fn tokens_new() -> Vec<Token> {
 pub fn tokens_push(mut ts: Vec<Token>, t: Token) -> Vec<Token> {
     ts.push(t);
     ts
+}
+
+// ── Helpers for lexer.hom inner-loop migration ──────────────────────────────
+
+/// Current position index.
+pub fn ls_i(s: LexState) -> i64 {
+    s.i
+}
+
+/// True if position is within bounds (ignores err — for inner loops).
+pub fn ls_not_at_end(s: LexState) -> bool {
+    (s.i as usize) < s.chars.len()
+}
+
+/// Advance i by n WITHOUT changing col/line (for skipping content where col doesn't matter).
+pub fn ls_advance_i_only(s: LexState, n: i64) -> LexState {
+    LexState { i: s.i + n, ..s }
+}
+
+/// Set line and col directly.
+pub fn ls_set_line_col(s: LexState, line: i64, col: i64) -> LexState {
+    LexState { line, col, ..s }
+}
+
+/// Extract chars[start..end] as a String.
+pub fn ls_substr(s: LexState, start: i64, end: i64) -> String {
+    s.chars[start as usize..end as usize].iter().collect()
+}
+
+/// String length (number of chars).
+pub fn str_len(s: String) -> i64 {
+    s.len() as i64
+}
+
+/// String contains a character (given as 1-char string).
+pub fn str_contains(s: String, ch: String) -> bool {
+    s.contains(&ch)
+}
+
+/// Parse a string as an integer. Returns (true, value) on success, (false, 0) on failure.
+/// Error message returned separately via parse_number_err.
+pub fn parse_int_result(s: String) -> (bool, i64) {
+    match s.parse::<i64>() {
+        Ok(v) => (true, v),
+        Err(_) => (false, 0),
+    }
+}
+
+/// Parse a string as a float. Returns (true, value) on success, (false, 0.0) on failure.
+pub fn parse_float_result(s: String) -> (bool, f64) {
+    match s.parse::<f64>() {
+        Ok(v) => (true, v),
+        Err(_) => (false, 0.0),
+    }
+}
+
+/// Resolve a single escape character: 'n' → '\n', 't' → '\t', etc.
+/// Input is a 1-char string after the backslash. Returns the resolved 1-char string.
+pub fn unescape_char(c: String) -> String {
+    match c.as_str() {
+        "n" => "\n".to_string(),
+        "t" => "\t".to_string(),
+        "\\" => "\\".to_string(),
+        "\"" => "\"".to_string(),
+        "'" => "'".to_string(),
+        "0" => "\0".to_string(),
+        _ => c,
+    }
+}
+
+/// Convert a 1-char String to a Token with CharLit kind.
+/// Used by lexer.hom which works with String, not char.
+pub fn make_token_char_from_str(val: String, pos: Pos) -> Token {
+    Token {
+        kind: TokenKind::Char(val.chars().next().unwrap_or('\0')),
+        pos,
+    }
+}
+
+/// Create an empty String.
+pub fn str_new() -> String {
+    String::new()
+}
+
+/// Build a string by appending a 1-char string to an existing string.
+pub fn str_push(mut s: String, ch: String) -> String {
+    s.push_str(&ch);
+    s
 }

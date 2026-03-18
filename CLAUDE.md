@@ -137,9 +137,7 @@ See `.claude/skills/claude-bot/` for the full skill, example scripts, and planni
 - **Don't break existing tests.** If your change breaks unrelated tests, investigate before committing.
 - **Commit messages matter.** Use format: `ticket: <verb> <what>` (e.g., `ticket: fix nested while codegen`)
 
-## Known Codegen Issues
+## TODO
 
-1. **Nested while loop counter shadowing**: `x := x + 1` inside nested while generates `let mut x = x + 1;` (shadow) instead of `x = x + 1;` (reassignment) → infinite loop
-2. **Struct clone semantics**: All fn args wrapped in `.clone()`. For structs with plain Vec/HashMap, mutations inside called functions are lost. `Rc<RefCell<...>>` types work correctly.
-3. `||`, `&&`, `!` are lex errors — must use `or`, `and`, `not`
-4. Functions from dep/*.rs are unknown to homunc's semantic checker — appear as "undefined reference" warnings
+1. Use `::` (mutable params) to replace `Rc<RefCell<>>` patterns — dep/ functions need `::` support or use functional return-value pattern
+2. Move more `.rs` logic into `.hom` — expand self-hosted modules (lexer.hom, resolver.hom)

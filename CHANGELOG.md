@@ -6,6 +6,17 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.74 — 2026-03-18 — Remove `Rc<RefCell<>>` from Scope + Expand lexer.hom
+
+- `dep/scope.rs`: Scope is now plain `HashSet<String>` — removed `Rc<RefCell<>>` wrapper
+- `scope_insert` returns modified Scope (functional pattern) instead of mutating shared ref
+- `sema.hom`: all scope_insert calls capture return value
+- `codegen.hom`: `cg_stmts` returns `(lines, scope)` tuple, scope tracking moved from `cg_stmt`
+- `lexer.hom`: migrated 5 inner-loop functions from `lexer_imp.rs` — `ls_skip_line_comment`, `ls_skip_block_comment`, `ls_read_string`, `ls_read_char_lit`, `ls_read_number`, `ls_read_ident`
+- `lexer_imp.rs`: only type definitions, token constructors, keyword dispatch, and char-testing helpers remain
+
+---
+
 ### v0.73 — 2026-03-18 — Fix Tuple Destructuring Reassignment
 
 - BindPat/BindPatMut codegen now checks if ALL names in a tuple pattern are already in scope
