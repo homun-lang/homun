@@ -158,7 +158,12 @@ cg_general_call := (i: int, sc: Scope, f: Expr, args: @[Expr]) -> str {
     arg_s := if (fn_name != "" and is_param_mutable_in_call(fn_name, ai)) {
       ak := expr_kind(filled_args[ai])
       if (ak == "Var") {
-        "&mut " + expr_var_name(filled_args[ai])
+        vn := expr_var_name(filled_args[ai])
+        if (is_mut_ref_param(vn)) {
+          vn
+        } else {
+          "&mut " + vn
+        }
       } else {
         "&mut (" + cg_expr(i, sc, filled_args[ai]) + ")"
       }
@@ -707,7 +712,11 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
           }
         }
         if (scope_contains(sc, name)) {
-          "${ind(i)}${name} = ${rhs};"
+          if (is_mut_ref_param(name)) {
+            "${ind(i)}*${name} = ${rhs};"
+          } else {
+            "${ind(i)}${name} = ${rhs};"
+          }
         } else {
           ind(i) + "let mut " + name + " = " + rhs + ";"
         }
@@ -753,7 +762,11 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
           }
         }
         if (scope_contains(sc, name)) {
-          "${ind(i)}${name} = ${rhs};"
+          if (is_mut_ref_param(name)) {
+            "${ind(i)}*${name} = ${rhs};"
+          } else {
+            "${ind(i)}${name} = ${rhs};"
+          }
         } else {
           ind(i) + "let mut " + name + " = " + rhs + ";"
         }
@@ -935,6 +948,7 @@ cg_top_fn := (i: int, name: str, params: @[Param], ret_ty: Option<TypeExpr>, voi
   scope0 := scope_from_list(param_names)
   param_str := codegen_params_mut(params)
   register_fn_sig(name, params)
+  set_current_mut_ref_params(params)
   generics := infer_generics(params)
   gen_str := generics_str(generics)
   ret_str := match void_mark {

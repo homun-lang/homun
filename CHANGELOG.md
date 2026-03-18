@@ -6,14 +6,20 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
-### v0.74 — 2026-03-18 — Remove `Rc<RefCell<>>` from Scope + Expand lexer.hom
+### v0.75 — 2026-03-18 — Remove all `Rc<RefCell<>>` + Expand lexer.hom + `::` deref codegen
 
 - `dep/scope.rs`: Scope is now plain `HashSet<String>` — removed `Rc<RefCell<>>` wrapper
+- `resolver_imp.rs`: ResolverState is now plain struct — removed `Rc<RefCell<>>` wrapper
+- `resolver.hom`: `resolve_file` uses `rs::ResolverState` (`&mut`), all mutating calls capture return
+- `lexer.hom`: migrated 6 inner-loop functions from `lexer_imp.rs`
+- `codegen.hom`: `::` param reassignment now emits `*name = rhs` (deref) for both `:=` and `::=`
+- `codegen_helpers.rs`: added `set_current_mut_ref_params` / `is_mut_ref_param` for `::` deref tracking
+
+### v0.74 — 2026-03-18 — Scope functional pattern + codegen refactor
+
 - `scope_insert` returns modified Scope (functional pattern) instead of mutating shared ref
 - `sema.hom`: all scope_insert calls capture return value
 - `codegen.hom`: `cg_stmts` returns `(lines, scope)` tuple, scope tracking moved from `cg_stmt`
-- `lexer.hom`: migrated 5 inner-loop functions from `lexer_imp.rs` — `ls_skip_line_comment`, `ls_skip_block_comment`, `ls_read_string`, `ls_read_char_lit`, `ls_read_number`, `ls_read_ident`
-- `lexer_imp.rs`: only type definitions, token constructors, keyword dispatch, and char-testing helpers remain
 
 ---
 

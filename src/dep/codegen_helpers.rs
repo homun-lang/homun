@@ -194,6 +194,10 @@ thread_local! {
         RefCell::new(HashMap::new());
     static FN_DEFAULTS: RefCell<HashMap<String, Vec<Option<Expr>>>> =
         RefCell::new(HashMap::new());
+    /// Names of :: params in the currently-being-codegen'd function.
+    /// Used to emit `*name = rhs` instead of `name = rhs` for reassignment.
+    static CURRENT_MUT_REF_PARAMS: RefCell<std::collections::HashSet<String>> =
+        RefCell::new(std::collections::HashSet::new());
 }
 
 /// Register a function name with its mutable-flag list and default expressions.
@@ -203,6 +207,21 @@ pub fn register_fn_sig(name: String, params: Vec<Param>) {
     let defaults: Vec<Option<Expr>> = params.into_iter().map(|p| p.default).collect();
     FN_MUT_PARAMS.with(|m| m.borrow_mut().insert(name.clone(), flags));
     FN_DEFAULTS.with(|m| m.borrow_mut().insert(name, defaults));
+}
+
+/// Set the current function's :: param names. Called at start of cg_top_fn.
+pub fn set_current_mut_ref_params(params: Vec<Param>) {
+    let names: std::collections::HashSet<String> = params
+        .iter()
+        .filter(|p| p.mutable)
+        .map(|p| p.name.clone())
+        .collect();
+    CURRENT_MUT_REF_PARAMS.with(|m| *m.borrow_mut() = names);
+}
+
+/// Returns true if `name` is a :: param of the current function.
+pub fn is_mut_ref_param(name: String) -> bool {
+    CURRENT_MUT_REF_PARAMS.with(|m| m.borrow().contains(&name))
 }
 
 /// Returns true if the arg at index arg_idx of function fn_name is a mutable ref param.
