@@ -39,7 +39,8 @@
     clippy::almost_swapped,
     clippy::needless_borrow,
     clippy::op_ref,
-    clippy::iter_overeager_cloned
+    clippy::iter_overeager_cloned,
+    clippy::missing_const_for_thread_local
 )]
 
 // ── Homun runtime (builtin + std + re + heap) ──────────────────────────────
@@ -54,7 +55,14 @@ pub mod dep;
 
 // ── Compiler pipeline modules ────────────────────────────────────────────────
 pub mod ast;
-pub mod parser;
+
+// ── parser_hom — parser compiled from parser.hom ────────────────────────────
+pub mod parser_hom {
+    use crate::dep::*;
+    use crate::lexer_hom::{Token, TokenKind};
+    use crate::runtime::*;
+    include!(concat!(env!("OUT_DIR"), "/parser.rs"));
+}
 
 // ── lexer_hom — tokeniser compiled from lexer.hom ────────────────────────────
 pub mod lexer_hom {
@@ -89,7 +97,9 @@ pub mod resolver_hom {
 pub mod main_hom {
     use crate::dep::*;
     use crate::runtime::*;
-    use crate::{builtin_rs, codegen_hom, embedded_rs, lexer_hom, parser, resolver_hom, sema_hom};
+    use crate::{
+        builtin_rs, codegen_hom, embedded_rs, lexer_hom, parser_hom, resolver_hom, sema_hom,
+    };
     include!(concat!(env!("OUT_DIR"), "/main.rs"));
 }
 

@@ -1,0 +1,979 @@
+// parser.hom — Recursive-descent Pratt parser → AST
+//
+// Uses:
+//   parser_imp — thread-local state (tokens, pos, err), token helpers,
+//                AST constructors, Option helpers, split_block
+//
+// State is managed via thread-local in parser_imp.rs. Parse functions
+// take no state arguments — they call ps_peek_kind(), ps_advance(), etc.
+// Error propagation: once ps_set_err() is called, all ops become no-ops.
+//
+// Public API:
+//   parse_program() -> @[Stmt]     — called from parser.rs wrapper
+
+use parser_imp
+
+// ─── Entry point ────────────────────────────────────────────────────────────
+
+parse_program := () -> @[Stmt] {
+  stmts := @[]
+  done := false
+  while (not done) {
+    k := ps_peek_kind()
+    if (k == "Eof" or k == "RBrace") {
+      done := true
+    } else {
+      if (k == "Use") {
+        push(stmts, parse_use())
+      } else {
+        if (k == "Ident") {
+          push(stmts, parse_top_bind())
+        } else {
+          done := true
+        }
+      }
+    }
+  }
+  ps_expect("Eof")
+  stmts
+}
+
+// ─── Top-level statements ───────────────────────────────────────────────────
+
+parse_use := () -> Stmt {
+  ps_expect("Use")
+  path := parse_mod_path()
+  mk_stmt_use(path)
+}
+
+parse_mod_path := () -> @[str] {
+  name := ps_advance_ident()
+  if (ps_has_err()) {
+    => @[]
+  }
+  path := @[name]
+  if (ps_consume("DoubleColon")) {
+    rest := parse_mod_path()
+    path := vec_concat_strs(path, rest)
+  }
+  path
+}
+
+parse_top_bind := () -> Stmt {
+  name := ps_advance_ident()
+  ps_expect("Assign")
+  k := ps_peek_kind()
+  if (k == "Struct") {
+    ps_advance()
+    fields := parse_brace_fields()
+    mk_stmt_struct_def(name, fields)
+  } else {
+    if (k == "Enum") {
+      ps_advance()
+      variants := parse_brace_variants()
+      mk_stmt_enum_def(name, variants)
+    } else {
+      rhs := parse_expr()
+      mk_stmt_bind(name, rhs)
+    }
+  }
+}
+
+parse_brace_fields := () -> @[FieldDef] {
+  ps_expect("LBrace")
+  fields := @[]
+  done := false
+  while (not done) {
+    k := ps_peek_kind()
+    if (k == "RBrace") {
+      done := true
+    } else {
+      if (k == "Ident") {
+        name := ps_peek_ident()
+        ps_advance()
+        ps_expect("Colon")
+        ty := parse_type_expr()
+        ps_consume("Comma")
+        push(fields, mk_fielddef(name, some_type(ty)))
+      } else {
+        done := true
+      }
+    }
+  }
+  ps_expect("RBrace")
+  fields
+}
+
+parse_brace_variants := () -> @[VariantDef] {
+  ps_expect("LBrace")
+  variants := @[]
+  done := false
+  while (not done) {
+    k := ps_peek_kind()
+    if (k == "RBrace") {
+      done := true
+    } else {
+      if (k == "Ident") {
+        name := ps_peek_ident()
+        ps_advance()
+        payload := if (ps_check("LParen")) {
+          ps_advance()
+          ty := parse_type_expr()
+          ps_expect("RParen")
+          some_type(ty)
+        } else {
+          none_type()
+        }
+        ps_consume("Comma")
+        push(variants, mk_variantdef(name, payload))
+      } else {
+        done := true
+      }
+    }
+  }
+  ps_expect("RBrace")
+  variants
+}
+
+// ─── Block statements ───────────────────────────────────────────────────────
+
+parse_block_stmts := () -> @[Stmt] {
+  stmts := @[]
+  done := false
+  while (not done) {
+    k := ps_peek_kind()
+    if (k == "RBrace" or k == "Eof") {
+      done := true
+    } else {
+      if (k == "FatArrow") {
+        ps_advance()
+        e := parse_expr()
+        push(stmts, mk_stmt_expression(mk_expr_early_return(e)))
+      } else {
+        if (k == "Ident") {
+          push(stmts, parse_block_bind())
+        } else {
+          e := parse_expr()
+          push(stmts, mk_stmt_expression(e))
+        }
+      }
+    }
+  }
+  stmts
+}
+
+parse_block_bind := () -> Stmt {
+  saved := ps_save()
+  k := ps_peek_kind()
+  if (k != "Ident") {
+    e := parse_expr()
+    => mk_stmt_expression(e)
+  }
+  name := ps_peek_ident()
+  ps_advance()
+
+  // Tuple bind: a, b := expr
+  if (ps_check("Comma")) {
+    names := @[name]
+    while (ps_consume("Comma")) {
+      nk := ps_peek_kind()
+      if (nk == "Ident") {
+        push(names, ps_peek_ident())
+        ps_advance()
+      } else {
+        if (nk == "Underscore") {
+          push(names, "_")
+          ps_advance()
+        } else {
+          ps_restore(saved)
+          e := parse_expr()
+          => mk_stmt_expression(e)
+        }
+      }
+    }
+    if (ps_check("Assign")) {
+      ps_advance()
+      rhs := parse_expr()
+      pats := names_to_pats(names)
+      => mk_stmt_bind_pat(mk_pat_tuple(pats), rhs)
+    }
+    if (ps_check("MutAssign")) {
+      ps_advance()
+      rhs := parse_expr()
+      pats := names_to_pats(names)
+      => mk_stmt_bind_pat_mut(mk_pat_tuple(pats), rhs)
+    }
+    ps_restore(saved)
+    e := parse_expr()
+    => mk_stmt_expression(e)
+  }
+
+  // Single bind: a := expr
+  if (ps_check("Assign")) {
+    ps_advance()
+    rhs := parse_expr()
+    => mk_stmt_bind(name, rhs)
+  }
+  if (ps_check("MutAssign")) {
+    ps_advance()
+    rhs := parse_expr()
+    => mk_stmt_bind_mut(name, rhs)
+  }
+
+  // Lvalue: expr[idx] := rhs  or  expr.field := rhs
+  if (ps_check("LBracket") or ps_check("Dot")) {
+    ps_restore(saved)
+    lhs := parse_expr()
+    if (ps_check("Assign")) {
+      ps_advance()
+      rhs := parse_expr()
+      => mk_stmt_assign(lhs, rhs)
+    }
+    => mk_stmt_expression(lhs)
+  }
+
+  // Fallback: expression
+  ps_restore(saved)
+  e := parse_expr()
+  mk_stmt_expression(e)
+}
+
+parse_block_stmts_braced := () -> @[Stmt] {
+  ps_expect("LBrace")
+  stmts := parse_block_stmts()
+  ps_expect("RBrace")
+  stmts
+}
+
+// ─── Expressions (precedence chain) ─────────────────────────────────────────
+
+parse_expr := () -> Expr {
+  parse_pipe()
+}
+
+parse_pipe := () -> Expr {
+  lhs ::= parse_or()
+  while (ps_check("Pipe")) {
+    ps_advance()
+    rhs := parse_postfix()
+    lhs ::= mk_expr_pipe(lhs, rhs)
+  }
+  lhs
+}
+
+parse_or := () -> Expr {
+  lhs ::= parse_and()
+  while (ps_check("Or")) {
+    ps_advance()
+    rhs := parse_and()
+    lhs ::= mk_expr_binop("Or", lhs, rhs)
+  }
+  lhs
+}
+
+parse_and := () -> Expr {
+  lhs ::= parse_not()
+  while (ps_check("And")) {
+    ps_advance()
+    rhs := parse_not()
+    lhs ::= mk_expr_binop("And", lhs, rhs)
+  }
+  lhs
+}
+
+parse_not := () -> Expr {
+  if (ps_check("Not")) {
+    ps_advance()
+    e := parse_not()
+    mk_expr_unop("Not", e)
+  } else {
+    parse_cmp()
+  }
+}
+
+parse_cmp := () -> Expr {
+  lhs := parse_add_sub()
+  k := ps_peek_kind()
+  if (k == "Eq") { ps_advance()  rhs := parse_add_sub()  mk_expr_binop("Eq", lhs, rhs) }
+  else { if (k == "Neq") { ps_advance()  rhs := parse_add_sub()  mk_expr_binop("Neq", lhs, rhs) }
+  else { if (k == "Lt") { ps_advance()  rhs := parse_add_sub()  mk_expr_binop("Lt", lhs, rhs) }
+  else { if (k == "Gt") { ps_advance()  rhs := parse_add_sub()  mk_expr_binop("Gt", lhs, rhs) }
+  else { if (k == "Le") { ps_advance()  rhs := parse_add_sub()  mk_expr_binop("Le", lhs, rhs) }
+  else { if (k == "Ge") { ps_advance()  rhs := parse_add_sub()  mk_expr_binop("Ge", lhs, rhs) }
+  else { if (k == "In") { ps_advance()  rhs := parse_add_sub()  mk_expr_binop("In", lhs, rhs) }
+  else { if (k == "Not") {
+    if (ps_same_line()) {
+      ps_advance()
+      ps_expect("In")
+      rhs := parse_add_sub()
+      mk_expr_binop("NotIn", lhs, rhs)
+    } else {
+      lhs
+    }
+  } else {
+    lhs
+  }}}}}}}}
+}
+
+parse_add_sub := () -> Expr {
+  lhs ::= parse_mul_div()
+  done := false
+  while (not done) {
+    k := ps_peek_kind()
+    if (k == "Plus") {
+      ps_advance()
+      rhs := parse_mul_div()
+      lhs ::= mk_expr_binop("Add", lhs, rhs)
+    } else {
+      if (k == "Minus") {
+        ps_advance()
+        rhs := parse_mul_div()
+        lhs ::= mk_expr_binop("Sub", lhs, rhs)
+      } else {
+        done := true
+      }
+    }
+  }
+  lhs
+}
+
+parse_mul_div := () -> Expr {
+  lhs ::= parse_unary()
+  done := false
+  while (not done) {
+    k := ps_peek_kind()
+    if (k == "Star") {
+      ps_advance()
+      rhs := parse_unary()
+      lhs ::= mk_expr_binop("Mul", lhs, rhs)
+    } else {
+      if (k == "Slash") {
+        ps_advance()
+        rhs := parse_unary()
+        lhs ::= mk_expr_binop("Div", lhs, rhs)
+      } else {
+        if (k == "Percent") {
+          ps_advance()
+          rhs := parse_unary()
+          lhs ::= mk_expr_binop("Mod", lhs, rhs)
+        } else {
+          done := true
+        }
+      }
+    }
+  }
+  lhs
+}
+
+parse_unary := () -> Expr {
+  if (ps_check("Minus")) {
+    ps_advance()
+    e := parse_unary()
+    mk_expr_unop("Neg", e)
+  } else {
+    parse_postfix()
+  }
+}
+
+parse_postfix := () -> Expr {
+  e ::= parse_atom()
+  done := false
+  while (not done) {
+    k := ps_peek_kind()
+    if (k == "Dot") {
+      ps_advance()
+      fname := ps_advance_ident()
+      if (ps_check("LParen")) {
+        args := parse_arg_list()
+        e ::= mk_expr_call(mk_expr_field(e, fname), args)
+      } else {
+        e ::= mk_expr_field(e, fname)
+      }
+    } else {
+      if (k == "LBracket" and ps_same_line()) {
+        ps_advance()
+        // Slice or index
+        ik := ps_peek_kind()
+        if (ik == "Colon") {
+          // Slice with no start: [:end] or [:end:step] or [:]
+          ps_advance()
+          to := parse_opt_slice_expr()
+          step := if (ps_consume("Colon")) { parse_opt_slice_expr() } else { none_expr() }
+          ps_expect("RBracket")
+          e ::= mk_expr_slice(e, none_expr(), to, step)
+        } else {
+          idx := parse_expr()
+          if (ps_check("Colon")) {
+            // Slice with start: [start:end] or [start:end:step]
+            ps_advance()
+            to := parse_opt_slice_expr()
+            step := if (ps_consume("Colon")) { parse_opt_slice_expr() } else { none_expr() }
+            ps_expect("RBracket")
+            e ::= mk_expr_slice(e, some_expr(idx), to, step)
+          } else {
+            // Index
+            ps_expect("RBracket")
+            e ::= mk_expr_index(e, idx)
+          }
+        }
+      } else {
+        if (k == "LParen" and ps_same_line()) {
+          args := parse_arg_list()
+          e ::= mk_expr_call(e, args)
+        } else {
+          if (k == "Question") {
+            ps_advance()
+            e ::= mk_expr_try_unwrap(e)
+          } else {
+            done := true
+          }
+        }
+      }
+    }
+  }
+  e
+}
+
+parse_opt_slice_expr := () -> Option<Expr> {
+  k := ps_peek_kind()
+  if (k == "RBracket" or k == "Colon") {
+    none_expr()
+  } else {
+    some_expr(parse_expr())
+  }
+}
+
+// ─── Atoms ──────────────────────────────────────────────────────────────────
+
+parse_atom := () -> Expr {
+  k := ps_peek_kind()
+  if (k == "Int") {
+    n := ps_peek_int()
+    ps_advance()
+    => mk_expr_int(n)
+  }
+  if (k == "Float") {
+    f := ps_peek_float()
+    ps_advance()
+    => mk_expr_float(f)
+  }
+  if (k == "Bool") {
+    b := ps_peek_bool()
+    ps_advance()
+    => mk_expr_bool(b)
+  }
+  if (k == "Str") {
+    s := ps_peek_str()
+    ps_advance()
+    => mk_expr_str(s)
+  }
+  if (k == "Char") {
+    c := ps_peek_char()
+    ps_advance()
+    => mk_expr_char_from_str(c)
+  }
+  if (k == "None") {
+    ps_advance()
+    => mk_expr_none()
+  }
+  if (k == "LParen") {
+    => parse_lambda_or_paren()
+  }
+  if (k == "At") {
+    => parse_collection()
+  }
+  if (k == "If") {
+    => parse_if_expr()
+  }
+  if (k == "Match") {
+    => parse_match_expr()
+  }
+  if (k == "For") {
+    => parse_for_expr()
+  }
+  if (k == "While") {
+    => parse_while_expr()
+  }
+  if (k == "Break") {
+    => parse_break_expr()
+  }
+  if (k == "Continue") {
+    ps_advance()
+    => mk_expr_continue()
+  }
+  if (k == "LBrace") {
+    => parse_inline_block()
+  }
+  if (k == "Underscore") {
+    ps_advance()
+    => mk_expr_var("_")
+  }
+  if (k == "Ident") {
+    name := ps_peek_ident()
+    ps_advance()
+    if (ps_check("LBrace") and is_upper_first_str(name)) {
+      fields := parse_struct_lit_fields()
+      => mk_expr_struct_lit(some_str(name), fields)
+    }
+    => mk_expr_var(name)
+  }
+  // Unknown token
+  if (not ps_has_err()) {
+    ps_set_err("Unexpected token: ${k}")
+  }
+  mk_expr_none()
+}
+
+// ─── Lambda vs parenthesised expr ───────────────────────────────────────────
+
+parse_lambda_or_paren := () -> Expr {
+  saved := ps_save()
+  lambda := try_parse_lambda()
+  if (not ps_has_err()) {
+    lambda
+  } else {
+    ps_clear_err()
+    ps_restore(saved)
+    // Parenthesised expr or tuple
+    ps_expect("LParen")
+    e := parse_expr()
+    if (ps_check("Comma")) {
+      ps_advance()
+      rest := parse_expr_sep("RParen")
+      ps_expect("RParen")
+      items := @[e]
+      items := vec_concat_exprs(items, rest)
+      mk_expr_tuple(items)
+    } else {
+      ps_expect("RParen")
+      e
+    }
+  }
+}
+
+try_parse_lambda := () -> Expr {
+  ps_expect("LParen")
+  params := parse_param_list()
+  ps_expect("RParen")
+  if (not ps_check("Arrow")) {
+    ps_set_err("not a lambda")
+    => mk_expr_none()
+  }
+  ps_advance()
+  // Return type
+  rk := ps_peek_kind()
+  ret_ty := if (rk == "LBrace") {
+    none_type()
+  } else {
+    if (rk == "Underscore") {
+      ps_advance()
+      none_type()
+    } else {
+      some_type(parse_type_expr())
+    }
+  }
+  void_mark := if (rk == "Underscore") { some_type(mk_type_void()) } else { none_type() }
+  stmts := parse_block_stmts_braced()
+  ss, fe := split_block(stmts)
+  mk_expr_lambda(params, ret_ty, void_mark, ss, fe)
+}
+
+parse_param_list := () -> @[Param] {
+  if (ps_check("RParen")) {
+    @[]
+  } else {
+    params := @[parse_one_param()]
+    while (ps_consume("Comma")) {
+      if (ps_check("RParen")) {
+        break
+      }
+      push(params, parse_one_param())
+    }
+    params
+  }
+}
+
+parse_one_param := () -> Param {
+  k := ps_peek_kind()
+  if (k == "Underscore") {
+    ps_advance()
+    => mk_param("_", none_type(), false, none_expr())
+  }
+  name := ps_advance_ident()
+  // name::Type — mutable param
+  if (ps_consume("DoubleColon")) {
+    ty := parse_type_expr()
+    => mk_param(name, some_type(ty), true, none_expr())
+  }
+  // name:=expr — default param
+  if (ps_consume("Assign")) {
+    default := parse_expr()
+    => mk_param(name, none_type(), false, some_expr(default))
+  }
+  // name:Type — typed param
+  if (ps_consume("Colon")) {
+    ty := parse_type_expr()
+    => mk_param(name, some_type(ty), false, none_expr())
+  }
+  // name — untyped param
+  mk_param(name, none_type(), false, none_expr())
+}
+
+parse_arg_list := () -> @[Expr] {
+  ps_expect("LParen")
+  args := parse_expr_sep("RParen")
+  ps_expect("RParen")
+  args
+}
+
+parse_expr_sep := (stop: str) -> @[Expr] {
+  if (ps_check(stop)) {
+    @[]
+  } else {
+    items := @[parse_expr()]
+    while (ps_consume("Comma")) {
+      if (ps_check(stop)) {
+        break
+      }
+      push(items, parse_expr())
+    }
+    items
+  }
+}
+
+// ─── Collections ────────────────────────────────────────────────────────────
+
+parse_collection := () -> Expr {
+  ps_expect("At")
+  k := ps_peek_kind()
+  if (k == "LBracket") { parse_list() }
+  else { if (k == "LBrace") { parse_dict() }
+  else { if (k == "LParen") { parse_set() }
+  else {
+    ps_set_err("Expected [, { or ( after @")
+    mk_expr_none()
+  }}}
+}
+
+parse_list := () -> Expr {
+  ps_expect("LBracket")
+  if (ps_check("RBracket")) {
+    ps_advance()
+    mk_expr_list(@[])
+  } else {
+    items := parse_expr_sep("RBracket")
+    ps_expect("RBracket")
+    mk_expr_list(items)
+  }
+}
+
+parse_dict := () -> Expr {
+  ps_expect("LBrace")
+  if (ps_check("RBrace")) {
+    ps_advance()
+    mk_expr_dict(new_expr_pairs())
+  } else {
+    pairs ::= new_expr_pairs()
+    done := false
+    while (not done) {
+      k := parse_expr()
+      ps_expect("Colon")
+      v := parse_expr()
+      pairs ::= push_expr_pair(pairs, k, v)
+      if (not ps_consume("Comma")) {
+        done := true
+      }
+    }
+    ps_expect("RBrace")
+    mk_expr_dict(pairs)
+  }
+}
+
+parse_set := () -> Expr {
+  ps_expect("LParen")
+  items := parse_expr_sep("RParen")
+  ps_expect("RParen")
+  mk_expr_set(items)
+}
+
+parse_struct_lit_fields := () -> @[(str, Expr)] {
+  ps_expect("LBrace")
+  fields ::= new_name_expr_pairs()
+  done := false
+  while (not done) {
+    k := ps_peek_kind()
+    if (k == "RBrace") {
+      done := true
+    } else {
+      if (k == "Ident") {
+        name := ps_peek_ident()
+        ps_advance()
+        ps_expect("Colon")
+        v := parse_expr()
+        ps_consume("Comma")
+        fields ::= push_name_expr_pair(fields, name, v)
+      } else {
+        done := true
+      }
+    }
+  }
+  ps_expect("RBrace")
+  fields
+}
+
+// ─── Control flow ───────────────────────────────────────────────────────────
+
+parse_if_expr := () -> Expr {
+  ps_expect("If")
+  ps_expect("LParen")
+  cond := parse_expr()
+  ps_expect("RParen")
+  then_stmts := parse_block_stmts_braced()
+  ts, te := split_block(then_stmts)
+  else_clause := if (ps_check("Else")) {
+    ps_advance()
+    else_stmts := parse_block_stmts_braced()
+    es, ee := split_block(else_stmts)
+    some_else(es, ee)
+  } else {
+    no_else()
+  }
+  mk_expr_if(cond, ts, te, else_clause)
+}
+
+parse_match_expr := () -> Expr {
+  ps_expect("Match")
+  scrut := parse_expr()
+  ps_expect("LBrace")
+  arms := @[]
+  while (not ps_check("RBrace") and not ps_has_err()) {
+    push(arms, parse_match_arm())
+  }
+  ps_expect("RBrace")
+  mk_expr_match(scrut, arms)
+}
+
+parse_match_arm := () -> MatchArm {
+  p0 := parse_pat()
+  pat := if (ps_check("Comma")) {
+    ps_advance()
+    rest := parse_more_pats()
+    all := @[p0]
+    all := vec_concat_pats(all, rest)
+    mk_pat_tuple(all)
+  } else {
+    p0
+  }
+  guard := if (ps_check("If")) {
+    ps_advance()
+    some_expr(parse_expr())
+  } else {
+    none_expr()
+  }
+  ps_expect("Arrow")
+  body := parse_expr()
+  mk_matcharm(pat, guard, body)
+}
+
+parse_more_pats := () -> @[Pat] {
+  pats := @[parse_pat()]
+  while (ps_check("Comma")) {
+    ps_advance()
+    push(pats, parse_pat())
+  }
+  pats
+}
+
+parse_pat := () -> Pat {
+  k := ps_peek_kind()
+  if (k == "Underscore") {
+    ps_advance()
+    => mk_pat_wild()
+  }
+  if (k == "None") {
+    ps_advance()
+    => mk_pat_none()
+  }
+  if (k == "Ident") {
+    name := ps_peek_ident()
+    ps_advance()
+    if (ps_check("Dot")) {
+      ps_advance()
+      vname := ps_advance_ident()
+      full := "${name}.${vname}"
+      if (ps_check("LParen")) {
+        ps_advance()
+        p := parse_pat()
+        ps_expect("RParen")
+        => mk_pat_enum(full, some_pat(p))
+      }
+      => mk_pat_enum(full, none_pat())
+    }
+    if (ps_check("LParen") and ps_same_line()) {
+      ps_advance()
+      p := parse_pat()
+      ps_expect("RParen")
+      => mk_pat_enum(name, some_pat(p))
+    }
+    => mk_pat_var(name)
+  }
+  if (k == "Int") {
+    n := ps_peek_int()
+    ps_advance()
+    => mk_pat_lit(mk_expr_int(n))
+  }
+  if (k == "Float") {
+    f := ps_peek_float()
+    ps_advance()
+    => mk_pat_lit(mk_expr_float(f))
+  }
+  if (k == "Bool") {
+    b := ps_peek_bool()
+    ps_advance()
+    => mk_pat_lit(mk_expr_bool(b))
+  }
+  if (k == "Str") {
+    s := ps_peek_str()
+    ps_advance()
+    => mk_pat_lit(mk_expr_str(s))
+  }
+  if (k == "Char") {
+    c := ps_peek_char()
+    ps_advance()
+    => mk_pat_lit(mk_expr_char_from_str(c))
+  }
+  if (k == "Minus") {
+    ps_advance()
+    nk := ps_peek_kind()
+    if (nk == "Int") {
+      n := ps_peek_int()
+      ps_advance()
+      => mk_pat_lit(mk_expr_int(neg_i64(n)))
+    }
+    if (nk == "Float") {
+      f := ps_peek_float()
+      ps_advance()
+      => mk_pat_lit(mk_expr_float(neg_f64(f)))
+    }
+    ps_set_err("Expected number after '-' in pattern")
+    => mk_pat_wild()
+  }
+  if (k == "LParen") {
+    ps_advance()
+    if (ps_check("RParen")) {
+      ps_advance()
+      => mk_pat_tuple(@[])
+    }
+    pats := @[parse_pat()]
+    while (ps_consume("Comma")) {
+      if (ps_check("RParen")) {
+        break
+      }
+      push(pats, parse_pat())
+    }
+    ps_expect("RParen")
+    => mk_pat_tuple(pats)
+  }
+  if (not ps_has_err()) {
+    ps_set_err("Expected pattern, got ${k}")
+  }
+  mk_pat_wild()
+}
+
+// ─── Loops ──────────────────────────────────────────────────────────────────
+
+parse_for_expr := () -> Expr {
+  ps_expect("For")
+  k := ps_peek_kind()
+  var_name := if (k == "Underscore") {
+    ps_advance()
+    "_"
+  } else {
+    ps_advance_ident()
+  }
+  ps_expect("In")
+  iter := parse_expr()
+  stmts := parse_block_stmts_braced()
+  ss, fe := split_block(stmts)
+  mk_expr_for(var_name, iter, ss, some_expr(fe))
+}
+
+parse_while_expr := () -> Expr {
+  ps_expect("While")
+  ps_expect("LParen")
+  cond := parse_expr()
+  ps_expect("RParen")
+  stmts := parse_block_stmts_braced()
+  ss, fe := split_block(stmts)
+  mk_expr_while(cond, ss, some_expr(fe))
+}
+
+parse_break_expr := () -> Expr {
+  ps_expect("Break")
+  mk_expr_break_none()
+}
+
+parse_inline_block := () -> Expr {
+  stmts := parse_block_stmts_braced()
+  ss, fe := split_block(stmts)
+  mk_expr_block(ss, fe)
+}
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+parse_type_expr := () -> TypeExpr {
+  k := ps_peek_kind()
+  if (k == "At") {
+    ps_advance()
+    ak := ps_peek_kind()
+    if (ak == "LBracket") {
+      ps_advance()
+      ty := parse_type_expr()
+      ps_expect("RBracket")
+      => mk_type_list(ty)
+    }
+    if (ak == "LBrace") {
+      ps_advance()
+      kty := parse_type_expr()
+      ps_expect("Colon")
+      vty := parse_type_expr()
+      ps_expect("RBrace")
+      => mk_type_dict(kty, vty)
+    }
+    if (ak == "LParen") {
+      ps_advance()
+      ty := parse_type_expr()
+      ps_expect("RParen")
+      => mk_type_set(ty)
+    }
+    => mk_type_infer()
+  }
+  if (k == "LParen") {
+    ps_advance()
+    types := @[parse_type_expr()]
+    while (ps_consume("Comma")) {
+      push(types, parse_type_expr())
+    }
+    ps_expect("RParen")
+    => mk_type_tuple(types)
+  }
+  if (k == "Underscore") {
+    ps_advance()
+    => mk_type_void()
+  }
+  if (k == "Ident") {
+    name := ps_peek_ident()
+    ps_advance()
+    if (ps_check("Lt")) {
+      ps_advance()
+      params := @[parse_type_expr()]
+      while (ps_consume("Comma")) {
+        push(params, parse_type_expr())
+      }
+      ps_expect("Gt")
+      => mk_type_generic(name, params)
+    }
+    => mk_type_name(name)
+  }
+  mk_type_infer()
+}

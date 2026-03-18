@@ -91,7 +91,7 @@ pub fn compile_source_fn(source: String, raw: bool) -> Result<String, String> {
     let tokens =
         lexer_hom::lex(source).map_err(|e| format!("Lex error: {}", e))?;
     let ast =
-        parser::parse(tokens).map_err(|e| format!("Parse error: {}", e))?;
+        parser_hom::parse(tokens).map_err(|e| format!("Parse error: {}", e))?;
     let sema_errs =
         sema_hom::sema_analyze_skip_undef(ast.clone(), Vec::new());
     if !sema_errs.is_empty() {

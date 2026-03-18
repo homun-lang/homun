@@ -423,9 +423,9 @@ pub fn do_lex(source: String) -> Result<Vec<crate::lexer_hom::Token>, String> {
     crate::lexer_hom::lex(source)
 }
 
-/// Parse a token list using the hand-written parser.
+/// Parse a token list using parser_hom (compiled from parser.hom).
 pub fn do_parse(tokens: Vec<crate::lexer_hom::Token>) -> Result<Vec<Stmt>, String> {
-    crate::parser::parse(tokens)
+    crate::parser_hom::parse(tokens)
 }
 
 /// Run semantic analysis via sema_hom.  If skip_undef is true, undefined
