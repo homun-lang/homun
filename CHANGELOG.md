@@ -6,6 +6,14 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.72 — 2026-03-18 — Self-Hosted Source Migration to `->` Match Arms
+
+- Converted all `src/*.hom` match arms from `=>` to `->` (codegen, sema, lexer, resolver, main)
+- Parser now requires `->` (Arrow) only — `=>` (FatArrow) no longer accepted in match arms
+- Early return `=> expr` syntax unchanged
+
+---
+
 ### v0.71 — 2026-03-17 — Match Arm Arrow Syntax (`=>` → `->`)
 
 - Parser now accepts both `->` (Arrow) and `=>` (FatArrow) in match arms — full backward compatibility

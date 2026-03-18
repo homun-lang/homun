@@ -27,8 +27,8 @@ use codegen_imp
 pat_names_list := (pat: Pat) -> @[str] {
   k := pat_kind(pat)
   match k {
-    "Var" => @[pat_var_name(pat)]
-    "Tuple" => {
+    "Var" -> @[pat_var_name(pat)]
+    "Tuple" -> {
       pats := pat_tuple_pats(pat)
       n := len(pats)
       names := @[]
@@ -39,7 +39,7 @@ pat_names_list := (pat: Pat) -> @[str] {
       }
       names
     }
-    _ => @[]
+    _ -> @[]
   }
 }
 
@@ -86,10 +86,10 @@ cg_commas := (i: int, sc: Scope, items: @[Expr]) -> str {
 cg_lvalue := (i: int, sc: Scope, e: Expr) -> str {
   k := expr_kind(e)
   match k {
-    "Var" => expr_var_name(e)
-    "Field" => cg_lvalue(i, sc, expr_field_expr(e)) + "." + expr_field_name(e)
-    "Index" => cg_lvalue(i, sc, expr_index_expr(e)) + "[" + cg_expr(i, sc, expr_index_idx(e)) + " as usize]"
-    _ => cg_expr(i, sc, e)
+    "Var" -> expr_var_name(e)
+    "Field" -> cg_lvalue(i, sc, expr_field_expr(e)) + "." + expr_field_name(e)
+    "Index" -> cg_lvalue(i, sc, expr_index_expr(e)) + "[" + cg_expr(i, sc, expr_index_idx(e)) + " as usize]"
+    _ -> cg_expr(i, sc, e)
   }
 }
 
@@ -100,11 +100,11 @@ cg_lvalue := (i: int, sc: Scope, e: Expr) -> str {
 cg_pat := (p: Pat) -> str {
   k := pat_kind(p)
   match k {
-    "Wild" => "_"
-    "None" => "None"
-    "Var" => pat_var_name(p)
-    "Lit" => cg_expr(0, scope_new(), pat_lit_expr(p))
-    "Tuple" => {
+    "Wild" -> "_"
+    "None" -> "None"
+    "Var" -> pat_var_name(p)
+    "Lit" -> cg_expr(0, scope_new(), pat_lit_expr(p))
+    "Tuple" -> {
       pats := pat_tuple_pats(p)
       n := len(pats)
       parts := @[]
@@ -115,16 +115,16 @@ cg_pat := (p: Pat) -> str {
       }
       "(" + join(parts, ", ") + ")"
     }
-    "Enum" => {
+    "Enum" -> {
       name := pat_enum_name(p)
       name2 := replace(name, ".", "::")
       payload := pat_enum_payload(p)
       match payload {
-        none => name2
-        Some(inner) => name2 + "(" + cg_pat(inner) + ")"
+        none -> name2
+        Some(inner) -> name2 + "(" + cg_pat(inner) + ")"
       }
     }
-    _ => "_"
+    _ -> "_"
   }
 }
 
@@ -179,7 +179,7 @@ cg_bin_op := (i: int, sc: Scope, op: str, lhs: Expr, rhs: Expr) -> str {
   l := cg_expr(i, sc, lhs)
   r := cg_expr(i, sc, rhs)
   match op {
-    "Add" => {
+    "Add" -> {
       if (is_list_expr(lhs) or is_list_expr(rhs)) {
         "homun_concat(" + l + ", " + r + ")"
       } else {
@@ -195,21 +195,21 @@ cg_bin_op := (i: int, sc: Scope, op: str, lhs: Expr, rhs: Expr) -> str {
         }
       }
     }
-    "Sub" => l + " - " + r
-    "Mul" => l + " * " + r
-    "Div" => l + " / " + r
-    "Mod" => l + " % " + r
-    "Eq" => l + " == " + r
-    "Neq" => l + " != " + r
-    "Lt" => l + " < " + r
-    "Gt" => l + " > " + r
-    "Le" => l + " <= " + r
-    "Ge" => l + " >= " + r
-    "And" => l + " && " + r
-    "Or" => l + " || " + r
-    "In" => "homun_in!(" + l + ", " + r + ")"
-    "NotIn" => "!homun_in!(" + l + ", " + r + ")"
-    _ => l + " " + op + " " + r
+    "Sub" -> l + " - " + r
+    "Mul" -> l + " * " + r
+    "Div" -> l + " / " + r
+    "Mod" -> l + " % " + r
+    "Eq" -> l + " == " + r
+    "Neq" -> l + " != " + r
+    "Lt" -> l + " < " + r
+    "Gt" -> l + " > " + r
+    "Le" -> l + " <= " + r
+    "Ge" -> l + " >= " + r
+    "And" -> l + " && " + r
+    "Or" -> l + " || " + r
+    "In" -> "homun_in!(" + l + ", " + r + ")"
+    "NotIn" -> "!homun_in!(" + l + ", " + r + ")"
+    _ -> l + " " + op + " " + r
   }
 }
 
@@ -270,8 +270,8 @@ cg_arm := (i: int, sc: Scope, arm: MatchArm) -> str {
   body := arm_body(arm)
   pat_s := cg_pat(p)
   guard_s := match g_opt {
-    none => ""
-    Some(g) => " if " + cg_expr(i, sc, g)
+    none -> ""
+    Some(g) -> " if " + cg_expr(i, sc, g)
   }
   body_s := if (expr_kind(body) == "Str") {
     codegen_string(expr_str_val(body)) + ".to_string()"
@@ -288,13 +288,13 @@ cg_arm := (i: int, sc: Scope, arm: MatchArm) -> str {
 cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
   k := expr_kind(expr)
   match k {
-    "Int" => str(expr_int_val(expr))
-    "Float" => str_of(expr_float_val(expr)) + "f32"
-    "Bool" => {
+    "Int" -> str(expr_int_val(expr))
+    "Float" -> str_of(expr_float_val(expr)) + "f32"
+    "Bool" -> {
       if (expr_bool_val(expr)) { "true" } else { "false" }
     }
-    "None" => "None"
-    "Char" => {
+    "None" -> "None"
+    "Char" -> {
       c := expr_char_val(expr)
       if (c == "\\") { "'\\\\'" }
       else { if (c == "'") { "'\\''" }
@@ -303,8 +303,8 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       else { if (c == "\0") { "'\\0'" }
       else { "'" + c + "'" } } } } }
     }
-    "Str" => codegen_string(expr_str_val(expr))
-    "Var" => {
+    "Str" -> codegen_string(expr_str_val(expr))
+    "Var" -> {
       n := expr_var_name(expr)
       if (n == "_") {
         "_"
@@ -312,7 +312,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         if (n == "str") { "str_of" } else { n }
       }
     }
-    "Field" => {
+    "Field" -> {
       base := cg_expr(i, sc, expr_field_expr(expr))
       field := expr_field_name(expr)
       if (is_upper_first(base)) {
@@ -321,33 +321,33 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         base + "." + field
       }
     }
-    "Index" => {
+    "Index" -> {
       cg_expr(i, sc, expr_index_expr(expr)) + ".homun_idx(" + cg_expr(i, sc, expr_index_idx(expr)) + ")"
     }
-    "Slice" => {
+    "Slice" -> {
       base_s := cg_expr(i, sc, expr_slice_expr(expr))
       from_opt := expr_slice_from(expr)
       to_opt := expr_slice_to(expr)
       step_opt := expr_slice_step(expr)
       from_s := match from_opt {
-        none => "0"
-        Some(e) => cg_expr(i, sc, e)
+        none -> "0"
+        Some(e) -> cg_expr(i, sc, e)
       }
       to_s := match to_opt {
-        none => "i64::MAX"
-        Some(e) => cg_expr(i, sc, e)
+        none -> "i64::MAX"
+        Some(e) -> cg_expr(i, sc, e)
       }
       step_s := match step_opt {
-        none => "1"
-        Some(e) => cg_expr(i, sc, e)
+        none -> "1"
+        Some(e) -> cg_expr(i, sc, e)
       }
       "slice!(" + base_s + ", " + from_s + ", " + to_s + ", " + step_s + ")"
     }
-    "List" => {
+    "List" -> {
       items := expr_list_items(expr)
       "vec![" + cg_commas(i, sc, items) + "]"
     }
-    "Dict" => {
+    "Dict" -> {
       pairs := expr_dict_pairs(expr)
       n := len(pairs)
       parts := @[]
@@ -359,15 +359,15 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "dict![" + join(parts, ", ") + "]"
     }
-    "Set" => {
+    "Set" -> {
       items := expr_set_items(expr)
       "set![" + cg_commas(i, sc, items) + "]"
     }
-    "Tuple" => {
+    "Tuple" -> {
       items := expr_tuple_items(expr)
       "(" + cg_commas(i, sc, items) + ")"
     }
-    "Struct" => {
+    "Struct" -> {
       name_opt := expr_struct_name(expr)
       fields := expr_struct_fields(expr)
       n := len(fields)
@@ -379,8 +379,8 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         fi := fi + 1
       }
       match name_opt {
-        Some(name) => name + " { " + join(parts, ", ") + " }"
-        none => {
+        Some(name) -> name + " { " + join(parts, ", ") + " }"
+        none -> {
           val_parts := @[]
           vi := 0
           while (vi < n) {
@@ -392,13 +392,13 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         }
       }
     }
-    "BinOp" => {
+    "BinOp" -> {
       op := expr_binop_op(expr)
       lhs := expr_binop_lhs(expr)
       rhs := expr_binop_rhs(expr)
       cg_bin_op(i, sc, op, lhs, rhs)
     }
-    "UnOp" => {
+    "UnOp" -> {
       op := expr_unop_op(expr)
       e := expr_unop_expr(expr)
       if (op == "Not") {
@@ -407,7 +407,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         "-" + cg_expr(i, sc, e)
       }
     }
-    "Pipe" => {
+    "Pipe" -> {
       lhs := expr_pipe_lhs(expr)
       rhs := expr_pipe_rhs(expr)
       if (expr_kind(rhs) == "Call") {
@@ -435,7 +435,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         cg_expr(i, sc, rhs) + "(" + cg_expr(i, sc, lhs) + ")"
       }
     }
-    "Lambda" => {
+    "Lambda" -> {
       params := expr_lambda_params(expr)
       lam_stmts := expr_lambda_stmts(expr)
       fe := expr_lambda_final(expr)
@@ -456,7 +456,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       body_lines := cg_body(i + 1, inner_sc, lam_stmts, fe)
       "|" + param_str + "| {\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "Call" => {
+    "Call" -> {
       f := expr_call_func(expr)
       args := expr_call_args(expr)
       if (expr_kind(f) == "Var") {
@@ -480,7 +480,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         cg_general_call(i, sc, f, args)
       }
     }
-    "If" => {
+    "If" -> {
       cond := expr_if_cond(expr)
       then_stmts := expr_if_then_stmts(expr)
       then_fe := expr_if_then_expr(expr)
@@ -496,7 +496,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "if " + cg_expr(i, sc, cond) + " {\n" + join(then_lines, "\n") + "\n" + ind(i) + "}" + else_str
     }
-    "Match" => {
+    "Match" -> {
       scrut := expr_match_scrutinee(expr)
       arms := expr_match_arms(expr)
       n := len(arms)
@@ -513,13 +513,13 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "match " + scrut_s + " {\n" + join(arm_strs, "\n") + "\n" + ind(i) + "}"
     }
-    "Block" => {
+    "Block" -> {
       stmts := expr_block_stmts(expr)
       fe := expr_block_final(expr)
       body_lines := cg_body(i + 1, sc, stmts, fe)
       "{\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "For" => {
+    "For" -> {
       var := expr_for_var(expr)
       iter := expr_for_iter(expr)
       body_stmts := expr_for_stmts(expr)
@@ -529,8 +529,8 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       body_sc := scope_clone(sc0)
       body_lines := cg_stmts(i + 1, body_sc, body_stmts)
       match fe_opt {
-        none => {}
-        Some(fe) => {
+        none -> {}
+        Some(fe) -> {
           is_empty_tup := expr_kind(fe) == "Tuple" and len(expr_tuple_items(fe)) == 0
           if (not is_empty_tup) {
             push(body_lines, "${ind(i + 1)}${cg_expr(i + 1, sc0, fe)};")
@@ -539,69 +539,69 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "for " + var + " in " + cg_expr(i, sc, iter) + " {\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "While" => {
+    "While" -> {
       cond := expr_while_cond(expr)
       body_stmts := expr_while_stmts(expr)
       fe_opt := expr_while_final(expr)
       body_sc := scope_clone(sc)
       body_lines := cg_stmts(i + 1, body_sc, body_stmts)
       match fe_opt {
-        none => {}
-        Some(fe) => {
+        none -> {}
+        Some(fe) -> {
           fe_sc := scope_clone(sc)
           push(body_lines, "${ind(i + 1)}${cg_expr(i + 1, fe_sc, fe)};")
         }
       }
       "while " + cg_expr(i, sc, cond) + " {\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "Break" => {
+    "Break" -> {
       val_opt := expr_break_value(expr)
       match val_opt {
-        none => "break"
-        Some(v) => "return " + cg_expr(i, sc, v)
+        none -> "break"
+        Some(v) -> "return " + cg_expr(i, sc, v)
       }
     }
-    "Continue" => "continue"
-    "LoadRon" => {
+    "Continue" -> "continue"
+    "LoadRon" -> {
       path := expr_loadron_path(expr)
       ty := expr_loadron_type(expr)
       "ron::from_str::<" + codegen_type(ty) + ">(&std::fs::read_to_string(" + cg_expr(i, sc, path) + ").unwrap()).unwrap()"
     }
-    "SaveRon" => {
+    "SaveRon" -> {
       data := expr_saveron_data(expr)
       path := expr_saveron_path(expr)
       "std::fs::write(" + cg_expr(i, sc, path) + ", ron::to_string(&" + cg_expr(i, sc, data) + ").unwrap()).unwrap()"
     }
-    "EarlyReturn" => {
+    "EarlyReturn" -> {
       val := expr_earlyreturn_val(expr)
       "return " + cg_expr(i, sc, val)
     }
-    "TryUnwrap" => cg_expr(i, sc, expr_tryunwrap_expr(expr)) + "?"
-    "Range" => {
+    "TryUnwrap" -> cg_expr(i, sc, expr_tryunwrap_expr(expr)) + "?"
+    "Range" -> {
       start_opt := expr_range_start(expr)
       end_opt := expr_range_end(expr)
       step_opt := expr_range_step(expr)
       match start_opt {
-        none => {
+        none -> {
           match end_opt {
-            none => "(0..)"
-            Some(e) => "(0.." + cg_expr(i, sc, e) + ")"
+            none -> "(0..)"
+            Some(e) -> "(0.." + cg_expr(i, sc, e) + ")"
           }
         }
-        Some(s) => {
+        Some(s) -> {
           match end_opt {
-            none => "(0..)"
-            Some(e) => {
+            none -> "(0..)"
+            Some(e) -> {
               match step_opt {
-                none => "(" + cg_expr(i, sc, s) + ".." + cg_expr(i, sc, e) + ")"
-                Some(st) => "(" + cg_expr(i, sc, s) + ".." + cg_expr(i, sc, e) + ").step_by(" + cg_expr(i, sc, st) + " as usize)"
+                none -> "(" + cg_expr(i, sc, s) + ".." + cg_expr(i, sc, e) + ")"
+                Some(st) -> "(" + cg_expr(i, sc, s) + ".." + cg_expr(i, sc, e) + ").step_by(" + cg_expr(i, sc, st) + " as usize)"
               }
             }
           }
         }
       }
     }
-    _ => ""
+    _ -> ""
   }
 }
 
@@ -645,7 +645,7 @@ cg_body := (i: int, sc: Scope, stmts: @[Stmt], fe: Expr) -> @[str] {
 cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
   k := stmt_kind(stmt)
   match k {
-    "Bind" => {
+    "Bind" -> {
       name := stmt_bind_name(stmt)
       e := stmt_bind_expr(stmt)
       if (expr_kind(e) == "Lambda") {
@@ -693,7 +693,7 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
         }
       }
     }
-    "BindMut" => {
+    "BindMut" -> {
       name := stmt_bind_mut_name(stmt)
       e := stmt_bind_mut_expr(stmt)
       if (expr_kind(e) == "Lambda") {
@@ -741,7 +741,7 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
         }
       }
     }
-    "BindPat" => {
+    "BindPat" -> {
       pat := stmt_bindpat_pat(stmt)
       e := stmt_bindpat_expr(stmt)
       rhs := cg_expr(i, sc, e)
@@ -778,7 +778,7 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       }
       ind(i) + "let (" + bind_str + ") = " + rhs + ";"
     }
-    "BindPatMut" => {
+    "BindPatMut" -> {
       pat := stmt_bindpat_mut_pat(stmt)
       e := stmt_bindpat_mut_expr(stmt)
       rhs := cg_expr(i, sc, e)
@@ -815,7 +815,7 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       }
       ind(i) + "let (" + bind_str + ") = " + rhs + ";"
     }
-    "Assign" => {
+    "Assign" -> {
       lhs := stmt_assign_lhs(stmt)
       rhs := stmt_assign_rhs(stmt)
       rhs_s := if (expr_kind(lhs) == "Field" and expr_kind(rhs) == "Str") {
@@ -825,11 +825,11 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       }
       "${ind(i)}${cg_lvalue(i, sc, lhs)} = ${rhs_s};"
     }
-    "Use" => {
+    "Use" -> {
       path := stmt_use_path(stmt)
       ind(i) + "use " + join(path, "::") + ";"
     }
-    "StructDef" => {
+    "StructDef" -> {
       name := stmt_bind_name(stmt)
       fields := stmt_structdef_fields(stmt)
       n := len(fields)
@@ -838,8 +838,8 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       while (fi < n) {
         f := fields[fi]
         ty_str := match fielddef_ty(f) {
-          none => "_"
-          Some(t) => codegen_type(t)
+          none -> "_"
+          Some(t) -> codegen_type(t)
         }
         push(field_lines, ind(i + 1) + "pub " + fielddef_name(f) + ": " + ty_str + ",")
         fi := fi + 1
@@ -847,7 +847,7 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       scope_insert(sc, name)
       ind(i) + "#[derive(Debug, Clone, PartialEq)]\n" + ind(i) + "struct " + name + " {\n" + join(field_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "EnumDef" => {
+    "EnumDef" -> {
       name := stmt_bind_name(stmt)
       variants := stmt_enumdef_variants(stmt)
       n := len(variants)
@@ -858,8 +858,8 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
         vname := variantdef_name(v)
         vpayload := variantdef_payload(v)
         vline := match vpayload {
-          none => "${ind(i + 1)}${vname},"
-          Some(ty) => "${ind(i + 1)}${vname}(${codegen_type(ty)}),"
+          none -> "${ind(i + 1)}${vname},"
+          Some(ty) -> "${ind(i + 1)}${vname}(${codegen_type(ty)}),"
         }
         push(var_lines, vline)
         vi := vi + 1
@@ -867,11 +867,11 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       scope_insert(sc, name)
       ind(i) + "#[derive(Debug, Clone, PartialEq)]\n" + ind(i) + "enum " + name + " {\n" + join(var_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "Expression" => {
+    "Expression" -> {
       e := stmt_expression_expr(stmt)
       "${ind(i)}${cg_expr(i, sc, e)};"
     }
-    _ => ""
+    _ -> ""
   }
 }
 
@@ -893,11 +893,11 @@ cg_top_fn := (i: int, name: str, params: @[Param], ret_ty: Option<TypeExpr>, voi
   generics := infer_generics(params)
   gen_str := generics_str(generics)
   ret_str := match void_mark {
-    Some(_) => ""
-    none => {
+    Some(_) -> ""
+    none -> {
       match ret_ty {
-        none => ""
-        Some(t) => " -> " + codegen_type(t)
+        none -> ""
+        Some(t) -> " -> " + codegen_type(t)
       }
     }
   }
@@ -915,19 +915,19 @@ cg_top_fn := (i: int, name: str, params: @[Param], ret_ty: Option<TypeExpr>, voi
 codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
   sk := stmt_kind(stmt)
   match sk {
-    "Use" => {
+    "Use" -> {
       path := stmt_use_path(stmt)
       if (len(path) == 1) {
         content_opt := rs_content_get(rs_content, path[0])
         match content_opt {
-          none => "use " + join(path, "::") + ";"
-          Some(content) => "// ── use " + path[0] + " ──\n" + content
+          none -> "use " + join(path, "::") + ";"
+          Some(content) -> "// ── use " + path[0] + " ──\n" + content
         }
       } else {
         "use " + join(path, "::") + ";"
       }
     }
-    "StructDef" => {
+    "StructDef" -> {
       name := stmt_bind_name(stmt)
       fields := stmt_structdef_fields(stmt)
       n := len(fields)
@@ -936,15 +936,15 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
       while (fi < n) {
         f := fields[fi]
         ty_str := match fielddef_ty(f) {
-          none => "_"
-          Some(t) => codegen_type(t)
+          none -> "_"
+          Some(t) -> codegen_type(t)
         }
         push(field_lines, ind(i + 1) + "pub " + fielddef_name(f) + ": " + ty_str + ",")
         fi := fi + 1
       }
       "#[derive(Debug, Clone, PartialEq)]\npub struct " + name + " {\n" + join(field_lines, "\n") + "\n}"
     }
-    "EnumDef" => {
+    "EnumDef" -> {
       name := stmt_bind_name(stmt)
       variants := stmt_enumdef_variants(stmt)
       n := len(variants)
@@ -955,15 +955,15 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         vname := variantdef_name(v)
         vpayload := variantdef_payload(v)
         vline := match vpayload {
-          none => "${ind(i + 1)}${vname},"
-          Some(ty) => "${ind(i + 1)}${vname}(${codegen_type(ty)}),"
+          none -> "${ind(i + 1)}${vname},"
+          Some(ty) -> "${ind(i + 1)}${vname}(${codegen_type(ty)}),"
         }
         push(var_lines, vline)
         vi := vi + 1
       }
       "#[derive(Debug, Clone, PartialEq)]\npub enum " + name + " {\n" + join(var_lines, "\n") + "\n}"
     }
-    "Bind" => {
+    "Bind" -> {
       name := stmt_bind_name(stmt)
       e := stmt_bind_expr(stmt)
       if (expr_kind(e) == "Lambda") {
@@ -987,7 +987,7 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         "pub const " + to_upper(name) + ": " + ty_str + " = " + cg_expr(0, scope_new(), e) + ";"
       }
     }
-    "BindMut" => {
+    "BindMut" -> {
       name := stmt_bind_mut_name(stmt)
       e := stmt_bind_mut_expr(stmt)
       if (expr_kind(e) == "Lambda") {
@@ -1011,11 +1011,11 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         "pub const " + to_upper(name) + ": " + ty_str + " = " + cg_expr(0, scope_new(), e) + ";"
       }
     }
-    "BindPatMut" => ""
-    "BindPat" => ""
-    "Assign" => ""
-    "Expression" => cg_expr(0, scope_new(), stmt_expression_expr(stmt)) + ";"
-    _ => ""
+    "BindPatMut" -> ""
+    "BindPat" -> ""
+    "Assign" -> ""
+    "Expression" -> cg_expr(0, scope_new(), stmt_expression_expr(stmt)) + ";"
+    _ -> ""
   }
 }
 

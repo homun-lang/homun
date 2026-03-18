@@ -84,7 +84,7 @@ lex := (source: str) -> Result<@[Token], str> {
                   tokens := tokens_push(tokens, tok)
                 } else {
 
-                  // ── Multi-char operators (:=, ->, =>, ==, !=, <=, >=) ─────
+                  // ── Multi-char operators (:=, ->, ->, ==, !=, <=, >=) ─────
                   multi_kind, multi_n := ls_try_multi_op(state)
                   if (multi_n > 0) {
                     tokens := tokens_push(tokens, make_token(multi_kind, pos))

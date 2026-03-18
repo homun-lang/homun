@@ -25,8 +25,8 @@ use sema_imp
 pat_names := (pat: Pat) -> @[str] {
   k := pat_kind(pat)
   match k {
-    "Var" => @[pat_var_name(pat)]
-    "Tuple" => {
+    "Var" -> @[pat_var_name(pat)]
+    "Tuple" -> {
       pats := pat_tuple_pats(pat)
       n := len(pats)
       i := 0
@@ -37,7 +37,7 @@ pat_names := (pat: Pat) -> @[str] {
       }
       names
     }
-    _ => errs_empty()
+    _ -> errs_empty()
   }
 }
 
@@ -63,8 +63,8 @@ extend_with_pat := (env: Scope, pat: Pat) -> Scope {
   if (k == "Enum") {
     payload := pat_enum_payload(pat)
     match payload {
-      none => {}
-      Some(inner_pat) => {
+      none -> {}
+      Some(inner_pat) -> {
         result := extend_with_pat(result, inner_pat)
       }
     }
@@ -145,13 +145,13 @@ check_stmts := (env: Scope, stmts: @[Stmt]) -> @[str] {
 check_stmt := (env: Scope, stmt: Stmt) -> @[str] {
   k := stmt_kind(stmt)
   match k {
-    "Bind" => check_expr(env, stmt_bind_expr(stmt))
-    "BindMut" => check_expr(env, stmt_bind_mut_expr(stmt))
-    "Expression" => check_expr(env, stmt_expression_expr(stmt))
-    "BindPat" => check_expr(env, stmt_bindpat_expr(stmt))
-    "BindPatMut" => check_expr(env, stmt_bindpat_mut_expr(stmt))
-    "Assign" => errs_join(check_expr(env, stmt_assign_lhs(stmt)), check_expr(env, stmt_assign_rhs(stmt)))
-    _ => errs_empty()
+    "Bind" -> check_expr(env, stmt_bind_expr(stmt))
+    "BindMut" -> check_expr(env, stmt_bind_mut_expr(stmt))
+    "Expression" -> check_expr(env, stmt_expression_expr(stmt))
+    "BindPat" -> check_expr(env, stmt_bindpat_expr(stmt))
+    "BindPatMut" -> check_expr(env, stmt_bindpat_mut_expr(stmt))
+    "Assign" -> errs_join(check_expr(env, stmt_assign_lhs(stmt)), check_expr(env, stmt_assign_rhs(stmt)))
+    _ -> errs_empty()
   }
 }
 
@@ -163,7 +163,7 @@ check_stmt := (env: Scope, stmt: Stmt) -> @[str] {
 check_expr := (env: Scope, expr: Expr) -> @[str] {
   k := expr_kind(expr)
   match k {
-    "Var" => {
+    "Var" -> {
       name := expr_var_name(expr)
       if (name == "_" or scope_contains(env, name)) {
         errs_empty()
@@ -171,28 +171,28 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
         errs_one("SEMA ERROR: undefined reference '${name}'")
       }
     }
-    "Field" => check_expr(env, expr_field_expr(expr))
-    "Index" => errs_join(check_expr(env, expr_index_expr(expr)), check_expr(env, expr_index_idx(expr)))
-    "Slice" => {
+    "Field" -> check_expr(env, expr_field_expr(expr))
+    "Index" -> errs_join(check_expr(env, expr_index_expr(expr)), check_expr(env, expr_index_idx(expr)))
+    "Slice" -> {
       base_errs := check_expr(env, expr_slice_expr(expr))
       from_opt  := expr_slice_from(expr)
       to_opt    := expr_slice_to(expr)
       step_opt  := expr_slice_step(expr)
       from_errs := match from_opt {
-        none => errs_empty()
-        Some(e) => check_expr(env, e)
+        none -> errs_empty()
+        Some(e) -> check_expr(env, e)
       }
       to_errs := match to_opt {
-        none => errs_empty()
-        Some(e) => check_expr(env, e)
+        none -> errs_empty()
+        Some(e) -> check_expr(env, e)
       }
       step_errs := match step_opt {
-        none => errs_empty()
-        Some(e) => check_expr(env, e)
+        none -> errs_empty()
+        Some(e) -> check_expr(env, e)
       }
       errs_join(base_errs, errs_join(from_errs, errs_join(to_errs, step_errs)))
     }
-    "List" => {
+    "List" -> {
       items := expr_list_items(expr)
       n := len(items)
       i := 0
@@ -203,7 +203,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "Set" => {
+    "Set" -> {
       items := expr_set_items(expr)
       n := len(items)
       i := 0
@@ -214,7 +214,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "Tuple" => {
+    "Tuple" -> {
       items := expr_tuple_items(expr)
       n := len(items)
       i := 0
@@ -225,7 +225,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "Dict" => {
+    "Dict" -> {
       pairs := expr_dict_pairs(expr)
       n := len(pairs)
       i := 0
@@ -237,7 +237,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "Struct" => {
+    "Struct" -> {
       fields := expr_struct_fields(expr)
       n := len(fields)
       i := 0
@@ -249,10 +249,10 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "BinOp" => errs_join(check_expr(env, expr_binop_lhs(expr)), check_expr(env, expr_binop_rhs(expr)))
-    "Pipe" => errs_join(check_expr(env, expr_pipe_lhs(expr)), check_expr(env, expr_pipe_rhs(expr)))
-    "UnOp" => check_expr(env, expr_unop_expr(expr))
-    "Call" => {
+    "BinOp" -> errs_join(check_expr(env, expr_binop_lhs(expr)), check_expr(env, expr_binop_rhs(expr)))
+    "Pipe" -> errs_join(check_expr(env, expr_pipe_lhs(expr)), check_expr(env, expr_pipe_rhs(expr)))
+    "UnOp" -> check_expr(env, expr_unop_expr(expr))
+    "Call" -> {
       f_errs := check_expr(env, expr_call_func(expr))
       args := expr_call_args(expr)
       an := len(args)
@@ -264,7 +264,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs_join(f_errs, arg_errs)
     }
-    "If" => {
+    "If" -> {
       cond_errs  := check_expr(env, expr_if_cond(expr))
       then_errs  := errs_join(check_stmts(env, expr_if_then_stmts(expr)), check_expr(env, expr_if_then_expr(expr)))
       else_errs  := if (expr_if_has_else(expr)) {
@@ -274,7 +274,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs_join(cond_errs, errs_join(then_errs, else_errs))
     }
-    "Match" => {
+    "Match" -> {
       sc_errs := check_expr(env, expr_match_scrutinee(expr))
       arms := expr_match_arms(expr)
       an := len(arms)
@@ -286,7 +286,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs_join(sc_errs, arm_errs)
     }
-    "For" => {
+    "For" -> {
       v          := expr_for_var(expr)
       iter       := expr_for_iter(expr)
       body_stmts := expr_for_stmts(expr)
@@ -297,12 +297,12 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       body_errs  := check_stmts(env2, body_stmts)
       env_final  := stmts_bound(env2, body_stmts)
       fe_errs    := match fe_opt {
-        none => errs_empty()
-        Some(e) => check_expr(env_final, e)
+        none -> errs_empty()
+        Some(e) -> check_expr(env_final, e)
       }
       errs_join(iter_errs, errs_join(body_errs, fe_errs))
     }
-    "While" => {
+    "While" -> {
       cond       := expr_while_cond(expr)
       body_stmts := expr_while_stmts(expr)
       fe_opt     := expr_while_final(expr)
@@ -310,27 +310,27 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       body_errs  := check_stmts(env, body_stmts)
       env_final  := stmts_bound(env, body_stmts)
       fe_errs    := match fe_opt {
-        none => errs_empty()
-        Some(e) => check_expr(env_final, e)
+        none -> errs_empty()
+        Some(e) -> check_expr(env_final, e)
       }
       errs_join(cond_errs, errs_join(body_errs, fe_errs))
     }
-    "Block" => {
+    "Block" -> {
       body_stmts := expr_block_stmts(expr)
       fe         := expr_block_final(expr)
       body_errs  := check_stmts(env, body_stmts)
       env_final  := stmts_bound(env, body_stmts)
       errs_join(body_errs, check_expr(env_final, fe))
     }
-    "Break" => {
+    "Break" -> {
       val_opt := expr_break_value(expr)
       match val_opt {
-        none => errs_empty()
-        Some(e) => check_expr(env, e)
+        none -> errs_empty()
+        Some(e) -> check_expr(env, e)
       }
     }
-    "EarlyReturn" => check_expr(env, expr_earlyreturn_val(expr))
-    "Lambda" => {
+    "EarlyReturn" -> check_expr(env, expr_earlyreturn_val(expr))
+    "Lambda" -> {
       params     := expr_lambda_params(expr)
       lam_stmts  := expr_lambda_stmts(expr)
       fe         := expr_lambda_final(expr)
@@ -345,10 +345,10 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       env_final := stmts_bound(env2, lam_stmts)
       errs_join(lam_errs, check_expr(env_final, fe))
     }
-    "LoadRon" => check_expr(env, expr_loadron_path(expr))
-    "SaveRon" => errs_join(check_expr(env, expr_saveron_data(expr)), check_expr(env, expr_saveron_path(expr)))
-    "TryUnwrap" => check_expr(env, expr_tryunwrap_expr(expr))
-    _ => errs_empty()
+    "LoadRon" -> check_expr(env, expr_loadron_path(expr))
+    "SaveRon" -> errs_join(check_expr(env, expr_saveron_data(expr)), check_expr(env, expr_saveron_path(expr)))
+    "TryUnwrap" -> check_expr(env, expr_tryunwrap_expr(expr))
+    _ -> errs_empty()
   }
 }
 
@@ -363,8 +363,8 @@ check_arm := (env: Scope, arm: MatchArm) -> @[str] {
   g_opt   := arm_guard(arm)
   body    := arm_body(arm)
   g_errs  := match g_opt {
-    none => errs_empty()
-    Some(g) => check_expr(env2, g)
+    none -> errs_empty()
+    Some(g) -> check_expr(env2, g)
   }
   errs_join(g_errs, check_expr(env2, body))
 }

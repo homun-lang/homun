@@ -79,8 +79,8 @@ resolve_file := (rs: ResolverState, path: str) -> ResolveFileResult {
               skip_embed := resolver_skip_embed(rs)
               emb_opt := do_embedded_rs(dep_name)
               match emb_opt {
-                none => {}
-                Some(emb_content) => {
+                none -> {}
+                Some(emb_content) -> {
                   if (not skip_embed) {
                     resolver_rs_content_insert(rs, dep_name, emb_content)
                     has_rs_dep := true
