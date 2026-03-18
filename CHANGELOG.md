@@ -6,6 +6,14 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.73 — 2026-03-18 — Fix Tuple Destructuring Reassignment
+
+- BindPat/BindPatMut codegen now checks if ALL names in a tuple pattern are already in scope
+- If all exist: emits `(a, b) = rhs;` (reassignment) instead of `let (mut a, mut b) = rhs;` (shadow)
+- Fixes incorrect variable shadowing when re-destructuring into existing names
+
+---
+
 ### v0.72 — 2026-03-18 — Self-Hosted Source Migration to `->` Match Arms
 
 - Converted all `src/*.hom` match arms from `=>` to `->` (codegen, sema, lexer, resolver, main)

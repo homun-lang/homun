@@ -746,74 +746,113 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       e := stmt_bindpat_expr(stmt)
       rhs := cg_expr(i, sc, e)
       pk := pat_kind(pat)
-      bind_str := if (pk == "Tuple") {
-        sub_pats := pat_tuple_pats(pat)
-        sn := len(sub_pats)
-        parts := @[]
-        si := 0
-        while (si < sn) {
-          sp := sub_pats[si]
-          spk := pat_kind(sp)
-          part := if (spk == "Var") {
-            "mut " + pat_var_name(sp)
-          } else {
-            if (spk == "Wild") { "_" } else { cg_pat(sp) }
-          }
-          push(parts, part)
-          si := si + 1
-        }
-        join(parts, ", ")
-      } else {
-        if (pk == "Var") {
-          "mut " + pat_var_name(pat)
-        } else {
-          cg_pat(pat)
-        }
-      }
       names := pat_names_list(pat)
-      ni := 0
-      while (ni < len(names)) {
-        scope_insert(sc, names[ni])
-        ni := ni + 1
+      // Check if ALL variable names are already in scope
+      all_exist := true
+      ci := 0
+      while (ci < len(names)) {
+        if (not scope_contains(sc, names[ci])) {
+          all_exist := false
+        }
+        ci := ci + 1
       }
-      ind(i) + "let (" + bind_str + ") = " + rhs + ";"
+      if (all_exist and len(names) > 0) {
+        // Reassignment: (a, b) = rhs;
+        reassign_parts := @[]
+        ri := 0
+        while (ri < len(names)) {
+          push(reassign_parts, names[ri])
+          ri := ri + 1
+        }
+        ind(i) + "(" + join(reassign_parts, ", ") + ") = " + rhs + ";"
+      } else {
+        // New binding: let (mut a, mut b) = rhs;
+        bind_str := if (pk == "Tuple") {
+          sub_pats := pat_tuple_pats(pat)
+          sn := len(sub_pats)
+          parts := @[]
+          si := 0
+          while (si < sn) {
+            sp := sub_pats[si]
+            spk := pat_kind(sp)
+            part := if (spk == "Var") {
+              "mut " + pat_var_name(sp)
+            } else {
+              if (spk == "Wild") { "_" } else { cg_pat(sp) }
+            }
+            push(parts, part)
+            si := si + 1
+          }
+          join(parts, ", ")
+        } else {
+          if (pk == "Var") {
+            "mut " + pat_var_name(pat)
+          } else {
+            cg_pat(pat)
+          }
+        }
+        ni := 0
+        while (ni < len(names)) {
+          scope_insert(sc, names[ni])
+          ni := ni + 1
+        }
+        ind(i) + "let (" + bind_str + ") = " + rhs + ";"
+      }
     }
     "BindPatMut" -> {
       pat := stmt_bindpat_mut_pat(stmt)
       e := stmt_bindpat_mut_expr(stmt)
       rhs := cg_expr(i, sc, e)
       pk := pat_kind(pat)
-      bind_str := if (pk == "Tuple") {
-        sub_pats := pat_tuple_pats(pat)
-        sn := len(sub_pats)
-        parts := @[]
-        si := 0
-        while (si < sn) {
-          sp := sub_pats[si]
-          spk := pat_kind(sp)
-          part := if (spk == "Var") {
-            "mut " + pat_var_name(sp)
-          } else {
-            if (spk == "Wild") { "_" } else { cg_pat(sp) }
-          }
-          push(parts, part)
-          si := si + 1
-        }
-        join(parts, ", ")
-      } else {
-        if (pk == "Var") {
-          "mut " + pat_var_name(pat)
-        } else {
-          cg_pat(pat)
-        }
-      }
       names := pat_names_list(pat)
-      ni := 0
-      while (ni < len(names)) {
-        scope_insert(sc, names[ni])
-        ni := ni + 1
+      all_exist := true
+      ci := 0
+      while (ci < len(names)) {
+        if (not scope_contains(sc, names[ci])) {
+          all_exist := false
+        }
+        ci := ci + 1
       }
-      ind(i) + "let (" + bind_str + ") = " + rhs + ";"
+      if (all_exist and len(names) > 0) {
+        reassign_parts := @[]
+        ri := 0
+        while (ri < len(names)) {
+          push(reassign_parts, names[ri])
+          ri := ri + 1
+        }
+        ind(i) + "(" + join(reassign_parts, ", ") + ") = " + rhs + ";"
+      } else {
+        bind_str := if (pk == "Tuple") {
+          sub_pats := pat_tuple_pats(pat)
+          sn := len(sub_pats)
+          parts := @[]
+          si := 0
+          while (si < sn) {
+            sp := sub_pats[si]
+            spk := pat_kind(sp)
+            part := if (spk == "Var") {
+              "mut " + pat_var_name(sp)
+            } else {
+              if (spk == "Wild") { "_" } else { cg_pat(sp) }
+            }
+            push(parts, part)
+            si := si + 1
+          }
+          join(parts, ", ")
+        } else {
+          if (pk == "Var") {
+            "mut " + pat_var_name(pat)
+          } else {
+            cg_pat(pat)
+          }
+        }
+        ni := 0
+        while (ni < len(names)) {
+          scope_insert(sc, names[ni])
+          ni := ni + 1
+        }
+        ind(i) + "let (" + bind_str + ") = " + rhs + ";"
+      }
     }
     "Assign" -> {
       lhs := stmt_assign_lhs(stmt)
