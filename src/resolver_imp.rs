@@ -213,14 +213,13 @@ pub fn resolved_program_files(p: ResolvedProgram) -> Vec<ResolvedFile> {
     p.files
 }
 
-// ── ResolverState — thread-local DFS state ──────────────────────────────────
+// ── ResolverState — plain mutable DFS state ─────────────────────────────────
 //
 // Color is a String: "White" (unvisited), "Gray" (in-progress), "Black" (done).
-// Uses thread-local storage so resolver.hom functions don't need to pass state.
+// resolver.hom uses :: params (&mut) so no Rc<RefCell<>> needed.
 
-use std::cell::RefCell;
-
-struct ResolverState {
+#[derive(Clone)]
+pub struct ResolverState {
     color: std::collections::HashMap<String, String>,
     stack: Vec<String>,
     files: Vec<ResolvedFile>,
@@ -229,99 +228,106 @@ struct ResolverState {
     skip_embed: bool,
 }
 
-thread_local! {
-    static RS_STATE: RefCell<ResolverState> = RefCell::new(ResolverState {
+pub fn resolver_new(skip_embed: bool) -> ResolverState {
+    ResolverState {
         color: std::collections::HashMap::new(),
         stack: Vec::new(),
         files: Vec::new(),
         resolved_hom_names: std::collections::HashSet::new(),
         resolved_rs_content: std::collections::HashMap::new(),
-        skip_embed: false,
-    });
+        skip_embed,
+    }
 }
 
-pub fn rs_init(skip_embed: bool) {
-    RS_STATE.with(|s| {
-        let mut st = s.borrow_mut();
-        st.color.clear();
-        st.stack.clear();
-        st.files.clear();
-        st.resolved_hom_names.clear();
-        st.resolved_rs_content.clear();
-        st.skip_embed = skip_embed;
-    });
+/// Get the color for a canonical path. Returns "White" if not set.
+pub fn resolver_color_get(rs: ResolverState, path: String) -> String {
+    rs.color
+        .get(&path)
+        .cloned()
+        .unwrap_or_else(|| "White".to_string())
 }
 
-pub fn rs_color_get(path: String) -> String {
-    RS_STATE.with(|s| {
-        s.borrow()
-            .color
-            .get(&path)
-            .cloned()
-            .unwrap_or_else(|| "White".to_string())
-    })
+/// Set the color for a canonical path. Returns modified state.
+pub fn resolver_color_set(mut rs: ResolverState, path: String, color: String) -> ResolverState {
+    rs.color.insert(path, color);
+    rs
 }
 
-pub fn rs_color_set(path: String, color: String) {
-    RS_STATE.with(|s| { s.borrow_mut().color.insert(path, color); });
+/// Push a canonical path onto the DFS stack. Returns modified state.
+pub fn resolver_stack_push(mut rs: ResolverState, path: String) -> ResolverState {
+    rs.stack.push(path);
+    rs
 }
 
-pub fn rs_stack_push(path: String) {
-    RS_STATE.with(|s| s.borrow_mut().stack.push(path));
+/// Pop the top of the DFS stack. Returns modified state.
+pub fn resolver_stack_pop(mut rs: ResolverState) -> ResolverState {
+    rs.stack.pop();
+    rs
 }
 
-pub fn rs_stack_pop() {
-    RS_STATE.with(|s| { s.borrow_mut().stack.pop(); });
+/// Return stack entries from `canonical` onwards (for cycle description).
+pub fn resolver_stack_from_canonical(rs: ResolverState, canonical: String) -> Vec<String> {
+    rs.stack
+        .iter()
+        .skip_while(|p| **p != canonical)
+        .cloned()
+        .collect()
 }
 
-pub fn rs_stack_from_canonical(canonical: String) -> Vec<String> {
-    RS_STATE.with(|s| {
-        s.borrow()
-            .stack
-            .iter()
-            .skip_while(|p| **p != canonical)
-            .cloned()
-            .collect()
-    })
+/// Append a ResolvedFile to the files list. Returns modified state.
+pub fn resolver_files_push(mut rs: ResolverState, f: ResolvedFile) -> ResolverState {
+    rs.files.push(f);
+    rs
 }
 
-pub fn rs_files_push(f: ResolvedFile) {
-    RS_STATE.with(|s| s.borrow_mut().files.push(f));
+/// Return a clone of the entire files list.
+pub fn resolver_files_get(rs: ResolverState) -> Vec<ResolvedFile> {
+    rs.files.clone()
 }
 
-pub fn rs_files_get() -> Vec<ResolvedFile> {
-    RS_STATE.with(|s| s.borrow().files.clone())
+/// Return the exports of the file with the given canonical path, or empty set.
+pub fn resolver_files_find_exports(
+    rs: ResolverState,
+    canonical: String,
+) -> std::collections::HashSet<String> {
+    rs.files
+        .iter()
+        .find(|f| f.path.to_string_lossy() == canonical.as_str())
+        .map(|f| f.exports.clone())
+        .unwrap_or_default()
 }
 
-pub fn rs_files_find_exports(canonical: String) -> std::collections::HashSet<String> {
-    RS_STATE.with(|s| {
-        s.borrow()
-            .files
-            .iter()
-            .find(|f| f.path.to_string_lossy() == canonical.as_str())
-            .map(|f| f.exports.clone())
-            .unwrap_or_default()
-    })
+/// Return a clone of the resolved_hom_names set.
+pub fn resolver_hom_names_get(rs: ResolverState) -> std::collections::HashSet<String> {
+    rs.resolved_hom_names.clone()
 }
 
-pub fn rs_hom_names_get() -> std::collections::HashSet<String> {
-    RS_STATE.with(|s| s.borrow().resolved_hom_names.clone())
+/// Insert a name into resolved_hom_names. Returns modified state.
+pub fn resolver_hom_names_insert(mut rs: ResolverState, name: String) -> ResolverState {
+    rs.resolved_hom_names.insert(name);
+    rs
 }
 
-pub fn rs_hom_names_insert(name: String) {
-    RS_STATE.with(|s| { s.borrow_mut().resolved_hom_names.insert(name); });
+/// Return a clone of the resolved_rs_content map.
+pub fn resolver_rs_content_get_map(
+    rs: ResolverState,
+) -> std::collections::HashMap<String, String> {
+    rs.resolved_rs_content.clone()
 }
 
-pub fn rs_rs_content_get_map() -> std::collections::HashMap<String, String> {
-    RS_STATE.with(|s| s.borrow().resolved_rs_content.clone())
+/// Insert a (name, content) pair into resolved_rs_content. Returns modified state.
+pub fn resolver_rs_content_insert(
+    mut rs: ResolverState,
+    name: String,
+    content: String,
+) -> ResolverState {
+    rs.resolved_rs_content.insert(name, content);
+    rs
 }
 
-pub fn rs_rs_content_insert(name: String, content: String) {
-    RS_STATE.with(|s| { s.borrow_mut().resolved_rs_content.insert(name, content); });
-}
-
-pub fn rs_skip_embed() -> bool {
-    RS_STATE.with(|s| s.borrow().skip_embed)
+/// Return the skip_embed flag.
+pub fn resolver_skip_embed(rs: ResolverState) -> bool {
+    rs.skip_embed
 }
 
 // ── find_dep — search for a dependency file (kept in Rust for PathBuf ops) ────
