@@ -327,9 +327,11 @@ while (enemies > 0) { enemies ::= enemies - 1 }
 
 `break` exits loop. `continue` skips iteration. Both work inside `match` blocks.
 
-### `=> value` — Early Return
+## Early Return: `=> value`
 
-`break` exits a loop. `=> value` returns early from the enclosing function/block.
+`=> value` returns early from the enclosing function/block.
+
+There is no `return` keyword. The last expression in a block is its value. `=> value` is only for **early** exit — using a separate keyword return makes confusion with the implicit final-expression return.
 
 ```
 // Two Sum
@@ -625,7 +627,3 @@ damage_system := (health::Health, amount: int) -> _ {
 // The Rust engine handles entity storage and system scheduling.
 // Homun scripts define components (data) and systems (logic).
 ```
-
-### Design Philosophy
-
-Homun delegates type checking to `rustc`. It does not reimplement Rust's type system — it generates Rust code and lets the Rust compiler enforce correctness. This is why Homun needs zero special syntax for traits, generics, or derive: **Rust already has them, and Homun compiles to Rust.**
