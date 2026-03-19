@@ -6,12 +6,13 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
-### v0.76 — 2026-03-19 — Set syntax `@{a, b}`, removed `@()`
+### v0.76 — 2026-03-19 — Set syntax `@{a, b}`, struct destructuring, removed `@()`
 
 - Set literals now use `@{a, b, c}` (curly braces) instead of `@(a, b, c)` (parens)
 - `@{k: v}` is dict (has colons), `@{a, b}` is set (no colons) — parser auto-detects
 - `@()` removed — no longer accepted
 - `@{}` empty → empty dict
+- Added struct rename destructuring: `{x: a, y: b} := pos` desugars to field access bindings
 - Updated README, llm.txt, Compiler.md, main.hom help text
 
 ---

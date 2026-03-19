@@ -150,16 +150,113 @@ parse_block_stmts := () -> @[Stmt] {
         e := parse_expr()
         push(stmts, mk_stmt_expression(mk_expr_early_return(e)))
       } else {
-        if (k == "Ident") {
-          push(stmts, parse_block_bind())
+        if (k == "LBrace") {
+          // Try struct destructure: {x: a, y: b} := expr
+          sd_stmts := try_parse_struct_destruct()
+          if (len(sd_stmts) > 0) {
+            si := 0
+            while (si < len(sd_stmts)) {
+              push(stmts, sd_stmts[si])
+              si := si + 1
+            }
+          } else {
+            e := parse_expr()
+            push(stmts, mk_stmt_expression(e))
+          }
         } else {
-          e := parse_expr()
-          push(stmts, mk_stmt_expression(e))
+          if (k == "Ident") {
+            push(stmts, parse_block_bind())
+          } else {
+            e := parse_expr()
+            push(stmts, mk_stmt_expression(e))
+          }
         }
       }
     }
   }
   stmts
+}
+
+// ─── try_parse_struct_destruct ──────────────────────────────────────────────
+// Try to parse {field: binding, ...} := expr
+// Returns @[Stmt] (multiple Bind stmts) on success, or @[] on failure.
+// Desugars: {x: a, y: b} := pos  →  _sd := pos; a := _sd.x; b := _sd.y
+
+try_parse_struct_destruct := () -> @[Stmt] {
+  saved := ps_save()
+
+  // Expect {
+  if (not ps_check("LBrace")) {
+    => @[]
+  }
+  ps_advance()
+
+  // Parse field:binding pairs
+  fields := @[]
+  bindings := @[]
+  ok := true
+
+  while (ok and not ps_check("RBrace")) {
+    fk := ps_peek_kind()
+    if (fk != "Ident") {
+      ok := false
+    }
+    if (ok) {
+      field := ps_peek_ident()
+      ps_advance()
+      if (not ps_check("Colon")) {
+        ok := false
+      }
+      if (ok) {
+        ps_advance()
+        bk := ps_peek_kind()
+        if (bk != "Ident") {
+          ok := false
+        }
+        if (ok) {
+          binding := ps_peek_ident()
+          ps_advance()
+          push(fields, field)
+          push(bindings, binding)
+          dummy := ps_consume("Comma")
+        } else {}
+      }
+    }
+  }
+
+  if (not ok or len(fields) == 0) {
+    ps_restore(saved)
+    => @[]
+  }
+
+  // Expect }
+  if (not ps_check("RBrace")) {
+    ps_restore(saved)
+    => @[]
+  }
+  ps_advance()
+
+  // Expect :=
+  if (not ps_check("Assign")) {
+    ps_restore(saved)
+    => @[]
+  }
+  ps_advance()
+
+  // Parse the RHS expression
+  rhs := parse_expr()
+
+  // Desugar: _sd_tmp := rhs; binding := _sd_tmp.field; ...
+  result := @[]
+  tmp_name := "" + "_sd_tmp"
+  push(result, mk_stmt_bind(tmp_name, rhs))
+  i := 0
+  while (i < len(fields)) {
+    field_expr := mk_expr_field(mk_expr_var(tmp_name), fields[i])
+    push(result, mk_stmt_bind(bindings[i], field_expr))
+    i := i + 1
+  }
+  result
 }
 
 parse_block_bind := () -> Stmt {
