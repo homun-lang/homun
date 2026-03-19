@@ -6,6 +6,14 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.77 — 2026-03-19 — Tuple patterns require `()`, removed bare comma patterns
+
+- Match tuple patterns now require explicit parentheses: `(0, _, _) ->` instead of `0, _, _ ->`
+- Aligns with Rust tuple pattern syntax
+- Removed `parse_more_pats` from parser — tuple patterns handled by `parse_pat` `(` branch
+
+---
+
 ### v0.76 — 2026-03-19 — Set syntax `@{a, b}`, struct destructuring, removed `@()`
 
 - Set literals now use `@{a, b, c}` (curly braces) instead of `@(a, b, c)` (parens)

@@ -858,16 +858,7 @@ parse_match_expr := () -> Expr {
 }
 
 parse_match_arm := () -> MatchArm {
-  p0 := parse_pat()
-  pat := if (ps_check("Comma")) {
-    ps_advance()
-    rest := parse_more_pats()
-    all := @[p0]
-    all := vec_concat_pats(all, rest)
-    mk_pat_tuple(all)
-  } else {
-    p0
-  }
+  pat := parse_pat()
   guard := if (ps_check("If")) {
     ps_advance()
     some_expr(parse_expr())

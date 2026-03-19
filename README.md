@@ -56,9 +56,9 @@ fizz_buzz := (n: int) -> @[str] {
   result := @[]
   for i in range(1, n+1) {
     value := match (i % 15, i % 3, i % 5) {
-      0, _, _ -> "FizzBuzz"
-      _, 0, _ -> "Fizz"
-      _, _, 0 -> "Buzz"
+      (0, _, _) -> "FizzBuzz"
+      (_, 0, _) -> "Fizz"
+      (_, _, 0) -> "Buzz"
       _         -> str(i)
     }
     result := result + @[value]
