@@ -6,13 +6,13 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
-### v0.76 — 2026-03-19 — Set syntax `@{}` + backward compat `@()`
+### v0.76 — 2026-03-19 — Set syntax `@{a, b}`, removed `@()`
 
 - Set literals now use `@{a, b, c}` (curly braces) instead of `@(a, b, c)` (parens)
 - `@{k: v}` is dict (has colons), `@{a, b}` is set (no colons) — parser auto-detects
-- `@()` still accepted for backward compatibility
-- `@{}` empty → empty dict (backward compat)
-- Updated README, llm.txt, main.hom help text
+- `@()` removed — no longer accepted
+- `@{}` empty → empty dict
+- Updated README, llm.txt, Compiler.md, main.hom help text
 
 ---
 

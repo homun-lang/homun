@@ -648,11 +648,10 @@ parse_collection := () -> Expr {
   k := ps_peek_kind()
   if (k == "LBracket") { parse_list() }
   else { if (k == "LBrace") { parse_dict_or_set() }
-  else { if (k == "LParen") { parse_set() }
   else {
-    ps_set_err("Expected [, { or ( after @")
+    ps_set_err("Expected [ or { after @")
     mk_expr_none()
-  }}}
+  }}
 }
 
 parse_list := () -> Expr {
@@ -702,13 +701,6 @@ parse_dict_or_set := () -> Expr {
       mk_expr_set(items)
     }
   }
-}
-
-parse_set := () -> Expr {
-  ps_expect("LParen")
-  items := parse_expr_sep("RParen")
-  ps_expect("RParen")
-  mk_expr_set(items)
 }
 
 parse_struct_lit_fields := () -> @[(str, Expr)] {
