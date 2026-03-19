@@ -647,7 +647,7 @@ parse_collection := () -> Expr {
   ps_expect("At")
   k := ps_peek_kind()
   if (k == "LBracket") { parse_list() }
-  else { if (k == "LBrace") { parse_dict() }
+  else { if (k == "LBrace") { parse_dict_or_set() }
   else { if (k == "LParen") { parse_set() }
   else {
     ps_set_err("Expected [, { or ( after @")
@@ -667,25 +667,40 @@ parse_list := () -> Expr {
   }
 }
 
-parse_dict := () -> Expr {
+parse_dict_or_set := () -> Expr {
   ps_expect("LBrace")
   if (ps_check("RBrace")) {
+    // @{} — empty dict (backward compat)
     ps_advance()
     mk_expr_dict(new_expr_pairs())
   } else {
-    pairs ::= new_expr_pairs()
-    done := false
-    while (not done) {
-      k := parse_expr()
-      ps_expect("Colon")
+    // Parse first expression, then peek: Colon → dict, Comma/RBrace → set
+    first := parse_expr()
+    if (ps_check("Colon")) {
+      // Dict: @{key: val, ...}
+      ps_advance()
       v := parse_expr()
-      pairs ::= push_expr_pair(pairs, k, v)
-      if (not ps_consume("Comma")) {
-        done := true
+      pairs ::= new_expr_pairs()
+      pairs ::= push_expr_pair(pairs, first, v)
+      while (ps_consume("Comma")) {
+        if (ps_check("RBrace")) { break }
+        k2 := parse_expr()
+        ps_expect("Colon")
+        v2 := parse_expr()
+        pairs ::= push_expr_pair(pairs, k2, v2)
       }
+      ps_expect("RBrace")
+      mk_expr_dict(pairs)
+    } else {
+      // Set: @{a, b, ...}
+      items := @[first]
+      while (ps_consume("Comma")) {
+        if (ps_check("RBrace")) { break }
+        push(items, parse_expr())
+      }
+      ps_expect("RBrace")
+      mk_expr_set(items)
     }
-    ps_expect("RBrace")
-    mk_expr_dict(pairs)
   }
 }
 

@@ -65,7 +65,7 @@ print_help := () -> _ {
   print_str("  * Typed params           fn := (a: int, b: int) -> int { a + b }")
   print_str("  * Recursion              fib := (n) -> { if ... { fib(n-1) + fib(n-2) } }")
   print_str("  * Pipe operator          list | filter(f) | map(g)")
-  print_str("  * Collections            @[], @{}, @()")
+  print_str("  * Collections            @[], @{k:v}, @{a,b}")
   print_str("  * Pattern match          match x { ... }")
   print_str("  * if/else, for, while")
   print_str("  * break => value         for ... do { break => val }")

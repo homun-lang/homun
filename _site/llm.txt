@@ -34,7 +34,7 @@ msg := "Hello ${name}, score: ${x * 2}"
 ```hom
 list := @[1, 2, 3]                    // Vec (ordered)
 dict := @{"a": 1, "b": 2}            // HashMap (key-value)
-set  := @("x", "y", "z")             // HashSet (unique)
+set  := @{"x", "y", "z"}             // HashSet (unique)
 ```
 
 ### Functions (lambdas, last expression = return value)
@@ -309,7 +309,7 @@ is_ws(" ")                      // true
 | `none` | `Option::None` | |
 | `@[T]` | `Vec<T>` | |
 | `@{K: V}` | `HashMap<K, V>` | |
-| `@(T)` | `HashSet<T>` | |
+| `@{T}` | `HashSet<T>` | |
 | `-> _` | `()` | void |
 | untyped param | `T` (generic) | Rust infers |
 

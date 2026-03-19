@@ -6,6 +6,16 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.76 — 2026-03-19 — Set syntax `@{}` + backward compat `@()`
+
+- Set literals now use `@{a, b, c}` (curly braces) instead of `@(a, b, c)` (parens)
+- `@{k: v}` is dict (has colons), `@{a, b}` is set (no colons) — parser auto-detects
+- `@()` still accepted for backward compatibility
+- `@{}` empty → empty dict (backward compat)
+- Updated README, llm.txt, main.hom help text
+
+---
+
 ### v0.75 — 2026-03-18 — Self-host parser + `::` params + CI overhaul
 
 - **Parser self-hosted**: replaced 1090-line `parser.rs` with `parser.hom` + `parser_imp.rs` (thread-local state, error propagation via no-op pattern)

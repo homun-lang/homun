@@ -233,7 +233,7 @@ All prefixed with `@`. Bracket shape determines kind.
 ```
 items  := @[1, 2, 3]                  // list (ordered, duplicates ok)
 scores := @{"alice": 100, "bob": 80}  // dict (key-value)
-flags  := @("fire", "ice", "poison")  // set (unique, unordered)
+flags  := @{"fire", "ice", "poison"}  // set (unique, unordered)
 empty  := @[]                          // type from first use
 ```
 
