@@ -6,14 +6,18 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
-### v0.75 — 2026-03-18 — Remove all `Rc<RefCell<>>` + Expand lexer.hom + `::` deref codegen
+### v0.75 — 2026-03-18 — Self-host parser + `::` params + CI overhaul
 
-- `dep/scope.rs`: Scope is now plain `HashSet<String>` — removed `Rc<RefCell<>>` wrapper
+- **Parser self-hosted**: replaced 1090-line `parser.rs` with `parser.hom` + `parser_imp.rs` (thread-local state, error propagation via no-op pattern)
+- **`::` params in lexer.hom**: 6 helper functions (`ls_skip_line_comment`, `ls_skip_block_comment`, `ls_read_string`, `ls_read_char_lit`, `ls_read_number`, `ls_read_ident`) use `state::LexState` — mutate in place, return only the payload
+- **`::` params in resolver.hom**: `resolve_file(rs::ResolverState, ...)` — `&mut` instead of `Rc<RefCell<>>`
 - `resolver_imp.rs`: ResolverState is now plain struct — removed `Rc<RefCell<>>` wrapper
-- `resolver.hom`: `resolve_file` uses `rs::ResolverState` (`&mut`), all mutating calls capture return
-- `lexer.hom`: migrated 6 inner-loop functions from `lexer_imp.rs`
-- `codegen.hom`: `::` param reassignment now emits `*name = rhs` (deref) for both `:=` and `::=`
+- `dep/scope.rs`: Scope is now plain `HashSet<String>` — removed `Rc<RefCell<>>` wrapper
+- `codegen.hom`: `::` param reassignment emits `*name = rhs` (deref)
 - `codegen_helpers.rs`: added `set_current_mut_ref_params` / `is_mut_ref_param` for `::` deref tracking
+- **CI**: Docker-based test workflow (`Dockerfile.test`) — no stale cache issues
+- **test_hom_std_re**: un-ignored, compiles via temp Cargo project with `regex` dep
+- **Bootstrap fix**: v0.75.4 two-stage release to break `::` deref chicken-and-egg cycle
 
 ### v0.74 — 2026-03-18 — Scope functional pattern + codegen refactor
 
