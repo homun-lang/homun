@@ -11,6 +11,10 @@
 // ls_cur / ls_peek return 1-char Strings so .hom code can compare with
 // string literals.
 //
+// State-modifying helpers use :: params to mutate LexState in place.
+// The _imp.rs dep functions (ls_advance_col etc.) still use the return-value
+// pattern, so inside :: functions we reassign: state := ls_advance_col(state, 1)
+//
 // Public API:
 //   lex(source: str) -> Result<@[Token], str>
 
@@ -21,16 +25,15 @@ use lexer_imp
 
 // ─── ls_skip_line_comment ────────────────────────────────────────────────────
 // Skip from current position to (but not including) the next newline.
-ls_skip_line_comment := (state: LexState) -> LexState {
+ls_skip_line_comment := (state::LexState) -> _ {
   while (ls_not_at_end(state) and ls_cur(state) != "\n") {
     state := ls_advance_i_only(state, 1)
   }
-  state
 }
 
 // ─── ls_skip_block_comment ───────────────────────────────────────────────────
 // Skip a /* ... */ block comment. Sets err if unterminated.
-ls_skip_block_comment := (state: LexState) -> LexState {
+ls_skip_block_comment := (state::LexState) -> _ {
   start_line := ls_line(state)
   start_col  := ls_col(state)
   // Skip opening /*
@@ -55,13 +58,12 @@ ls_skip_block_comment := (state: LexState) -> LexState {
   if (not done) {
     state := ls_set_err(state, "Unterminated block comment at line ${start_line}, col ${start_col}")
   }
-  state
 }
 
 // ─── ls_read_string ─────────────────────────────────────────────────────────
 // Read a "..." string literal starting at the current ".
-// Returns (new_state, content). Sets err if unterminated.
-ls_read_string := (state: LexState) -> (LexState, str) {
+// Modifies state in place via ::, returns the string content.
+ls_read_string := (state::LexState) -> str {
   // Skip opening "
   state := ls_advance_col(state, 1)
   buf := str_new()
@@ -93,13 +95,13 @@ ls_read_string := (state: LexState) -> (LexState, str) {
   if (not done and not ls_has_err(state)) {
     state := ls_set_err(state, "Unterminated string literal")
   }
-  (state, buf)
+  buf
 }
 
 // ─── ls_read_char_lit ────────────────────────────────────────────────────────
 // Read a 'x' or '\n' char literal starting at the current '.
-// Returns (new_state, char_as_string). Sets err if malformed.
-ls_read_char_lit := (state: LexState) -> (LexState, str) {
+// Modifies state in place via ::, returns char as string.
+ls_read_char_lit := (state::LexState) -> str {
   start_line := ls_line(state)
   start_col  := ls_col(state)
   // Skip opening '
@@ -107,24 +109,24 @@ ls_read_char_lit := (state: LexState) -> (LexState, str) {
 
   if (not ls_not_at_end(state)) {
     state := ls_set_err(state, "Unterminated char literal")
-    (state, str_new())
+    str_new()
   } else {
     ch := ls_cur(state)
     if (ch == "\\") {
       state := ls_advance_col(state, 1)
       if (not ls_not_at_end(state)) {
         state := ls_set_err(state, "Unterminated char literal")
-        (state, str_new())
+        str_new()
       } else {
         result := unescape_char(ls_cur(state))
         state := ls_advance_col(state, 1)
         // Expect closing '
         if (not ls_not_at_end(state) or ls_cur(state) != "'") {
           state := ls_set_err(state, "Unterminated char literal at line ${start_line}, col ${start_col}")
-          (state, str_new())
+          str_new()
         } else {
           state := ls_advance_col(state, 1)
-          (state, result)
+          result
         }
       }
     } else {
@@ -133,10 +135,10 @@ ls_read_char_lit := (state: LexState) -> (LexState, str) {
       // Expect closing '
       if (not ls_not_at_end(state) or ls_cur(state) != "'") {
         state := ls_set_err(state, "Unterminated char literal at line ${start_line}, col ${start_col}")
-        (state, str_new())
+        str_new()
       } else {
         state := ls_advance_col(state, 1)
-        (state, result)
+        result
       }
     }
   }
@@ -144,8 +146,8 @@ ls_read_char_lit := (state: LexState) -> (LexState, str) {
 
 // ─── ls_read_number ─────────────────────────────────────────────────────────
 // Read an integer or float literal starting at the current digit.
-// Returns (new_state, token). Sets err on parse failure.
-ls_read_number := (state: LexState) -> (LexState, Token) {
+// Modifies state in place via ::, returns the token.
+ls_read_number := (state::LexState) -> Token {
   pos := ls_pos(state)
   start := ls_i(state)
 
@@ -158,26 +160,26 @@ ls_read_number := (state: LexState) -> (LexState, Token) {
   if (str_contains(raw, ".")) {
     ok, val := parse_float_result(raw)
     if (ok) {
-      (state, make_token_float(val, pos))
+      make_token_float(val, pos)
     } else {
       state := ls_set_err(state, "Invalid float")
-      (state, make_token("Eof", pos))
+      make_token("Eof", pos)
     }
   } else {
     ok, val := parse_int_result(raw)
     if (ok) {
-      (state, make_token_int(val, pos))
+      make_token_int(val, pos)
     } else {
       state := ls_set_err(state, "Invalid int")
-      (state, make_token("Eof", pos))
+      make_token("Eof", pos)
     }
   }
 }
 
 // ─── ls_read_ident ──────────────────────────────────────────────────────────
 // Read an identifier or keyword starting at the current alphabetic char.
-// Returns (new_state, token).
-ls_read_ident := (state: LexState) -> (LexState, Token) {
+// Modifies state in place via ::, returns the token.
+ls_read_ident := (state::LexState) -> Token {
   pos   := ls_pos(state)
   start := ls_i(state)
 
@@ -186,8 +188,7 @@ ls_read_ident := (state: LexState) -> (LexState, Token) {
   }
 
   word := ls_substr(state, start, ls_i(state))
-  tok  := ls_keyword_token(word, pos)
-  (state, tok)
+  ls_keyword_token(word, pos)
 }
 
 // ─── lex ─────────────────────────────────────────────────────────────────────
@@ -213,18 +214,17 @@ lex := (source: str) -> Result<@[Token], str> {
 
       // ── Line comment: // … ────────────────────────────────────────────────
       if (c == "/" and ls_peek(state, 1) == "/") {
-        state := ls_skip_line_comment(state)
+        ls_skip_line_comment(state)
       } else {
 
         // ── Block comment: /* … */ ───────────────────────────────────────────
         if (c == "/" and ls_peek(state, 1) == "*") {
-          state := ls_skip_block_comment(state)
+          ls_skip_block_comment(state)
         } else {
 
           // ── String literal: "…" ─────────────────────────────────────────────
           if (c == "\"") {
-            new_state, s := ls_read_string(state)
-            state := new_state
+            s := ls_read_string(state)
             if (not ls_has_err(state)) {
               tokens := tokens_push(tokens, make_token_str(s, pos))
             }
@@ -232,8 +232,7 @@ lex := (source: str) -> Result<@[Token], str> {
 
             // ── Char literal: '…' ───────────────────────────────────────────
             if (c == "'") {
-              new_state, ch := ls_read_char_lit(state)
-              state := new_state
+              ch := ls_read_char_lit(state)
               if (not ls_has_err(state)) {
                 tokens := tokens_push(tokens, make_token_char_from_str(ch, pos))
               }
@@ -241,8 +240,7 @@ lex := (source: str) -> Result<@[Token], str> {
 
               // ── Number literal: digits ────────────────────────────────────
               if (is_digit(c)) {
-                new_state, tok := ls_read_number(state)
-                state := new_state
+                tok := ls_read_number(state)
                 if (not ls_has_err(state)) {
                   tokens := tokens_push(tokens, tok)
                 }
@@ -250,8 +248,7 @@ lex := (source: str) -> Result<@[Token], str> {
 
                 // ── Identifier / keyword: alpha start ────────────────────────
                 if (is_alpha(c)) {
-                  new_state, tok := ls_read_ident(state)
-                  state := new_state
+                  tok := ls_read_ident(state)
                   tokens := tokens_push(tokens, tok)
                 } else {
 
