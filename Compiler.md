@@ -148,7 +148,7 @@ The `std` library (`runtime/std/`) is also embedded in the compiler binary via `
 | `fib := (n) -> { fib(n-1) }` | recursive fn via `fn fib<T>(...) -> _` |
 | `@[1,2,3]` | `vec![1, 2, 3]` |
 | `@{"a": 1}` | `HashMap::from([("a", 1)])` |
-| `@("x","y")` | `HashSet::from(["x","y"])` |
+| `@{"x","y"}` | `HashSet::from(["x","y"])` |
 | `list \| filter(f) \| map(g)` | `map(filter(list, f), g)` |
 | `if (c) do { x } else { y }` | `if c { x } else { y }` |
 | `match x { pat => body }` | `match x { pat => body, }` |
@@ -182,7 +182,7 @@ The `Sema` pass enforces Homun's rules **before** codegen:
 | `none` | `Option<_>` |
 | `@[T]` | `Vec<T>` |
 | `@{K:V}` | `HashMap<K, V>` |
-| `@(T)` | `HashSet<T>` |
+| `@{T}` | `HashSet<T>` |
 | `_` (void) | `()` |
 | unknown | `_` (let Rust infer) |
 
