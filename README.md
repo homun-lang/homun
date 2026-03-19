@@ -237,6 +237,14 @@ flags  := @{"fire", "ice", "poison"}  // set (unique, unordered)
 empty  := @[]                          // type from first use
 ```
 
+Struct destructuring with rename:
+
+```
+Point := struct { x: int, y: int }
+p := Point { x: 3, y: 4 }
+{x: a, y: b} := p       // a == 3, b == 4
+```
+
 Dict access returns `none` on missing key:
 
 ```

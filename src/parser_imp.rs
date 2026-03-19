@@ -24,6 +24,7 @@ thread_local! {
     static PARSE_TOKENS: RefCell<Vec<Token>> = const { RefCell::new(vec![]) };
     static PARSE_POS: RefCell<usize> = const { RefCell::new(0) };
     static PARSE_ERR: RefCell<String> = const { RefCell::new(String::new()) };
+    static GENSYM_COUNTER: RefCell<usize> = const { RefCell::new(0) };
 }
 
 fn has_err_internal() -> bool {
@@ -116,6 +117,16 @@ pub fn ps_init(tokens: Vec<Token>) {
     PARSE_TOKENS.with(|t| *t.borrow_mut() = tokens);
     PARSE_POS.with(|p| *p.borrow_mut() = 0);
     PARSE_ERR.with(|e| *e.borrow_mut() = String::new());
+    GENSYM_COUNTER.with(|c| *c.borrow_mut() = 0);
+}
+
+/// Generate a unique temporary name like "_sd0", "_sd1", etc.
+pub fn ps_gensym(prefix: String) -> String {
+    GENSYM_COUNTER.with(|c| {
+        let n = *c.borrow();
+        *c.borrow_mut() = n + 1;
+        format!("{}{}", prefix, n)
+    })
 }
 
 pub fn ps_save() -> i32 {

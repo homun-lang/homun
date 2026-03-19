@@ -246,9 +246,9 @@ try_parse_struct_destruct := () -> @[Stmt] {
   // Parse the RHS expression
   rhs := parse_expr()
 
-  // Desugar: _sd_tmp := rhs; binding := _sd_tmp.field; ...
+  // Desugar: _sd0 := rhs; binding := _sd0.field; ...
   result := @[]
-  tmp_name := "" + "_sd_tmp"
+  tmp_name := ps_gensym("_sd")
   push(result, mk_stmt_bind(tmp_name, rhs))
   i := 0
   while (i < len(fields)) {

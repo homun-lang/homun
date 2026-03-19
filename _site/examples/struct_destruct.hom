@@ -1,0 +1,22 @@
+// examples/struct_destruct.hom
+// Tests struct rename destructuring: {field: binding} := expr
+use std
+
+Point := struct { x: int, y: int }
+Color := struct { r: int, g: int, b: int }
+
+dist := (p: Point) -> int {
+  {x: a, y: b} := p
+  a * a + b * b
+}
+
+main := () -> _ {
+  p := Point { x: 3, y: 4 }
+  {x: px, y: py} := p
+  print("px=${px}, py=${py}")
+  print("dist=${dist(p)}")
+
+  c := Color { r: 255, g: 128, b: 0 }
+  {r: red, g: green, b: blue} := c
+  print("rgb=${red},${green},${blue}")
+}

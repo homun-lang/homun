@@ -125,3 +125,23 @@ fn test_example_mut_param() {
         out
     );
 }
+
+#[test]
+fn test_example_struct_destruct() {
+    let out = compile_and_run(Path::new("_site/examples/struct_destruct.hom"));
+    assert!(
+        out.contains("px=3, py=4"),
+        "struct_destruct should print px=3, py=4, got: {}",
+        out
+    );
+    assert!(
+        out.contains("dist=25"),
+        "struct_destruct should print dist=25, got: {}",
+        out
+    );
+    assert!(
+        out.contains("rgb=255,128,0"),
+        "struct_destruct should print rgb=255,128,0, got: {}",
+        out
+    );
+}

@@ -109,6 +109,11 @@ increment := (c::Counter) -> _ { c.value := c.value + 1 }
 increment(c)                   // c.value is now 1 (mutated in place)
 ```
 
+### Struct Destructuring
+```hom
+{x: a, y: b} := p       // a = p.x, b = p.y
+```
+
 ### Enums
 ```hom
 Direction := enum { North, South, East, West }
