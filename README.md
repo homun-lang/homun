@@ -325,7 +325,7 @@ enemies ::= 10
 while (enemies > 0) { enemies ::= enemies - 1 }
 ```
 
-`break` exits loop. `continue` skips iteration. Both work inside `match` blocks.
+`break` exits loop. `continue` skips iteration. 
 
 ## Early Return: `=> value`
 
