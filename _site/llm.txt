@@ -142,9 +142,9 @@ use heap                        // import heap.rs or heap.hom from same director
 use graph                       // import graph.rs or graph.hom
 ```
 
-Import resolves `use foo` to: `foo.hom` → `foo.rs` → `foo/mod.hom` → `foo/mod.rs`
-Search is relative to the calling file's directory.
-If none found, passes through as Rust `use foo;`
+`use foo` checks four candidates (relative to calling file's directory):
+`foo.hom`, `foo.rs`, `foo/mod.hom`, `foo/mod.rs`.
+Exactly one may exist — 2+ is a compile error. 0 matches → passes through as Rust `use foo;`
 
 Runtime libs (`heap`, `re`, `chars`, `str_ext`, `dict`) live in `Homun-Lang/runtime/`.
 To use them in a project, either: (a) place the .hom test files in the same runtime/ dir,

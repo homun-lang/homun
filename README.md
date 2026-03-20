@@ -102,6 +102,7 @@ greeting := "Hello, ${name}! HP: ${hp * 2}"
 | `float` | `3.14`, `float(3.14)` | 32-bit |
 | `bool` | `true`, `false` | |
 | `str` | `"hello"` | UTF-8, `${}` interpolation |
+| `char` | `'a'`, `'\n'` | Single character (single quotes) |
 | `none` | `none` | Missing value. Use `match` to handle. |
 
 `-> _` is the void return (Rust `()`). `none` is absence (Rust `Option::None`). They are different.
@@ -319,6 +320,12 @@ match find_target(pos) {
   none   -> idle()
   target -> attack(target)
 }
+
+// Option matching with Some
+match heap_pop(h) {
+  Some((priority, item)) -> print("got: ${item}")
+  none -> print("empty")
+}
 ```
 
 ---
@@ -378,11 +385,24 @@ a, b    ::= b, a             // swap (mutable — lets you reassign a, b later)
 
 ## Error Handling
 
-No try/catch, no exceptions. The Rust engine wraps every script in an error boundary (like Unity).
-Runtime failures are caught, logged, and the game keeps running.
+No try/catch, no exceptions.
 
 Use `none` + `match` for expected absence. For complex error states, model as enum variants.
-For structured error handling, write it in Rust.
+
+`Result` + `?` for error propagation:
+
+```
+parse := (src: str) -> Result {
+  if (len(src) == 0) { Err("empty") }
+  else { Ok(build_ast(src)) }
+}
+
+// ? propagates errors (returns Err early)
+node := parse_node(cursor)?
+graph := build_graph(nodes)?
+```
+
+In ECS context, the Rust engine wraps scripts in an error boundary — runtime failures are caught, logged, and the game keeps running.
 
 ---
 
@@ -485,7 +505,7 @@ User writes `use std` — the compiler resolves it to `hom/std/`.
 ```
 use std    // provides: range, len, filter, map, reduce, split, join, abs, min, max, ...
 use re     // regex: re_match, re_is_match, re_replace, re_split
-use heap   // priority queue: heap_new, heap_push, heap_pop, heap_peek
+use heap   // priority queue: heap_new, heap_push, heap_pop, heap_len, heap_is_empty
 use chars  // char utils: is_alpha, is_digit, is_alnum, is_space
 ```
 
