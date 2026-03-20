@@ -139,7 +139,7 @@ build.rs detects imp.rs changes, re-triggers hom recompilation
 
 **CI/CD:**
 - All workflows (ci, release, cd) now use `submodules: recursive` for `actions/checkout`
-- CD auto-triggers after "Build and Release" succeeds (both Homun-Lang and mermaid-ascii)
+- CD auto-triggers after "Build and Release" succeeds
 
 ---
 

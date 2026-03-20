@@ -318,7 +318,7 @@ is_ws(" ")                      // true
 | `-> _` | `()` | void |
 | untyped param | `T` (generic) | Rust infers |
 
-## Common Patterns for mermaid-ascii
+## Example Patterns
 
 ### Struct as "object" with free functions
 ```hom

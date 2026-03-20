@@ -149,7 +149,7 @@ main := () -> _ {
     print("FAIL: re_match empty text returns empty string")
   }
 
-  // ── re_match node_id (mermaid) pattern ──────────────────────────────────────
+  // ── re_match node_id pattern ──────────────────────────────────────
 
   matched6, text6, end6 := re_match("[a-zA-Z_][a-zA-Z0-9_]*", "node_A123 rest", 0)
   if (matched6) {
