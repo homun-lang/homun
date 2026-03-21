@@ -107,6 +107,7 @@ pub fn compile_source_fn(source: String, raw: bool) -> Result<String, String> {
             }
         }
     }
+    crate::dep::register_known_dep_fns();
     let code = codegen_hom::codegen_program_with_resolved(
         ast,
         Default::default(),
@@ -124,6 +125,7 @@ pub fn compile_file_fn(path: String, raw: bool, module: bool) -> Result<String, 
     } else {
         resolver_hom::resolve(path.clone())?
     };
+    crate::dep::register_known_dep_fns();
     let mut output = if raw { String::new() } else { preamble() };
     for (i, file) in resolved.files.iter().enumerate() {
         output.push_str(&file.rust_code);

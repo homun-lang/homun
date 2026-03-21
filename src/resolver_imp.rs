@@ -444,6 +444,7 @@ pub fn do_codegen(
     hom_names: std::collections::HashSet<String>,
     rs_content: std::collections::HashMap<String, String>,
 ) -> String {
+    crate::dep::register_known_dep_fns();
     crate::codegen_hom::codegen_program_with_resolved(ast, hom_names, rs_content)
 }
 

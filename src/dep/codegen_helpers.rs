@@ -200,6 +200,25 @@ thread_local! {
         RefCell::new(std::collections::HashSet::new());
 }
 
+/// Pre-register built-in dep functions so codegen emits &mut for mutable params.
+/// Must be called once before codegen runs (e.g., from compile_str_fn).
+pub fn register_known_dep_fns() {
+    // heap functions: param 0 (the Heap) is &mut
+    let heap_fns = &[
+        ("heap_push", 3usize),
+        ("heap_pop", 1usize),
+        ("heap_len", 1usize),
+        ("heap_is_empty", 1usize),
+    ];
+    for (name, n_params) in heap_fns {
+        let mut flags = vec![false; *n_params];
+        flags[0] = true; // param 0 is &mut Heap
+        let defaults = vec![None; *n_params];
+        FN_MUT_PARAMS.with(|m| m.borrow_mut().insert(name.to_string(), flags));
+        FN_DEFAULTS.with(|m| m.borrow_mut().insert(name.to_string(), defaults));
+    }
+}
+
 /// Register a function name with its mutable-flag list and default expressions.
 /// Called from cg_top_fn when emitting a top-level function definition.
 pub fn register_fn_sig(name: String, params: Vec<Param>) {
