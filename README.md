@@ -499,7 +499,7 @@ From outside: `use opencv` resolves to `opencv/mod.hom`, which pulls in siblings
 
 ### Standard library (`hom/`)
 
-Runtime libraries live in the `hom/` submodule ([homun-std](https://github.com/HomunMage/homun-std)).
+Runtime libraries live in the `hom/` submodule ([homun-std](https://github.com/homun-lang/homun/homun-std)).
 User writes `use std` — the compiler resolves it to `hom/std/`.
 
 ```
@@ -516,10 +516,10 @@ homunc main.hom -o main.rs
 rustc main.rs -o main        # self-contained, no hom/ needed
 ```
 
-**Multi-module Cargo projects** — add [homun-std](https://github.com/HomunMage/homun-std) as a git submodule so all modules share one runtime:
+**Multi-module Cargo projects** — add [homun-std](https://github.com/homun-lang/homun/homun-std) as a git submodule so all modules share one runtime:
 
 ```bash
-git submodule add https://github.com/HomunMage/homun-std.git src/hom
+git submodule add https://github.com/homun-lang/homun/homun-std.git src/hom
 ```
 
 Then in `build.rs`, concatenate `src/hom/*.rs` into a shared `runtime.rs`.

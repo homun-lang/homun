@@ -61,7 +61,7 @@ Before building, ensure `.tmp/homunc` exists:
 ```bash
 mkdir -p .tmp
 if [ ! -x .tmp/homunc ]; then
-  wget -q https://github.com/HomunMage/Homun-Lang/releases/latest/download/homunc-linux-x86_64 -O .tmp/homunc
+  wget -q https://github.com/homun-lang/homun/releases/latest/download/homunc-linux-x86_64 -O .tmp/homunc
   chmod +x .tmp/homunc
 fi
 ```

@@ -33,7 +33,7 @@ jobs:
 
       - name: Download released WASM
         run: |
-          wget -q https://github.com/HomunMage/Homun-Lang/releases/latest/download/homunc-wasm.tar.gz
+          wget -q https://github.com/homun-lang/homun/releases/latest/download/homunc-wasm.tar.gz
           tar xzf homunc-wasm.tar.gz -C _site/
 
       - name: Setup Pages

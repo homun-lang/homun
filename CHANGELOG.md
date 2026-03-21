@@ -156,7 +156,7 @@ build.rs detects imp.rs changes, re-triggers hom recompilation
 ### v0.50 — hom-std Submodule, --module Flag & Integration Tests
 
 **Runtime refactor:**
-- Extracted runtime libraries into [homun-std](https://github.com/HomunMage/homun-std) git submodule at `hom/`
+- Extracted runtime libraries into homun-std git submodule at `hom/`
 - Compiler now reads runtime from `hom/` submodule (`include_str!("../hom/...")`) instead of `runtime/`
 - `use std`, `use re`, `use heap` etc. — compiler resolves to `hom/std/`, `hom/re.rs`, `hom/heap.rs`
 - Standalone usage unchanged — runtime embedded in `homunc` binary, no `hom/` needed on disk
