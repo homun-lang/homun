@@ -1,4 +1,4 @@
-# Homun-Lang — User Guide for Writing .hom Code
+# Homun-Lang v{{ __VERSION__ }} — User Guide for Writing .hom Code
 
 You are writing .hom code. You do NOT need to understand the compiler.
 Think of .hom as "Python-like syntax that compiles to Rust."

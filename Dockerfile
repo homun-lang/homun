@@ -14,6 +14,7 @@ ARG VERSION=dev
 WORKDIR /app
 COPY . .
 ENV HOMUN_VERSION=${VERSION}
+RUN sed -i "s/{{ __VERSION__ }}/${VERSION}/g" _site/llm.txt
 
 # Bootstrap: download released homunc to compile .hom files (detect host arch)
 RUN ARCH=$(dpkg --print-architecture) && \
