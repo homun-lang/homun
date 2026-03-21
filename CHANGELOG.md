@@ -6,6 +6,16 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.78 — 2026-03-21 — Clone elision in hom-std, extract tests, heap &mut
+
+- `src/hom/` tests extracted from inline `#[cfg(test)]` blocks into `src/hom/tests/test_*.rs`
+- `heap_push/pop/len/is_empty` signatures changed from owned `Heap` to `&mut Heap`
+- `count()` and `unique()` in `collection.rs`: defer `.cloned()` to after filter — one clone instead of two
+- `filter!` macro in `mod.rs`: same pattern — `filter` then `.cloned().collect()`
+- Registered heap builtins in `register_known_dep_fns()` so codegen emits `&mut` for `.hom` callers
+
+---
+
 ### v0.77 — 2026-03-19 — Tuple patterns require `()`, removed bare comma patterns
 
 - Match tuple patterns now require explicit parentheses: `(0, _, _) ->` instead of `0, _, _ ->`
