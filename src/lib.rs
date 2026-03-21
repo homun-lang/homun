@@ -103,6 +103,34 @@ pub mod main_hom {
     include!(concat!(env!("OUT_DIR"), "/main.rs"));
 }
 
+// ── Unit tests for src/hom/ runtime modules ──────────────────────────────────
+// Tests are extracted from src/hom/*.rs into src/hom/tests/ and wired here.
+#[cfg(test)]
+mod hom_tests {
+    // heap.rs and re.rs are included in crate::runtime — use their public fns directly.
+    use crate::runtime::*;
+
+    include!("hom/tests/test_heap.rs");
+    include!("hom/tests/test_re.rs");
+
+    // chars.rs, str_ext.rs, dict.rs are NOT in runtime (embedded-only modules).
+    // Include the source file first to get the function definitions, then the tests.
+    mod chars_mod {
+        include!("hom/chars.rs");
+        include!("hom/tests/test_chars.rs");
+    }
+
+    mod str_ext_mod {
+        include!("hom/str_ext.rs");
+        include!("hom/tests/test_str_ext.rs");
+    }
+
+    mod dict_mod {
+        include!("hom/dict.rs");
+        include!("hom/tests/test_dict.rs");
+    }
+}
+
 // ── Embedded runtime library content ─────────────────────────────────────────
 // builtin_rs() is used by main_hom::preamble() to get the builtin.rs content.
 // include_str! resolves relative to this file (src/lib.rs → src/hom/builtin.rs).
