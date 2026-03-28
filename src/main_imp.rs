@@ -78,29 +78,10 @@ pub fn homunc_version() -> String {
 /// instead of needing the hom-std submodule.
 pub fn emit_runtime_fn() {
     print!("{}", preamble());
-    // std
-    if let Some(content) = embedded_rs("std") {
-        print!("{}\n", content);
-    }
-    // re
-    if let Some(content) = embedded_rs("re") {
-        print!("{}\n", content);
-    }
-    // heap
-    if let Some(content) = embedded_rs("heap") {
-        print!("{}\n", content);
-    }
-    // chars
-    if let Some(content) = embedded_rs("chars") {
-        print!("{}\n", content);
-    }
-    // str_ext
-    if let Some(content) = embedded_rs("str_ext") {
-        print!("{}\n", content);
-    }
-    // dict
-    if let Some(content) = embedded_rs("dict") {
-        print!("{}\n", content);
+    for name in &["std", "re", "heap", "chars", "str_ext", "dict"] {
+        if let Some(content) = embedded_rs(name) {
+            println!("{}", content);
+        }
     }
 }
 
