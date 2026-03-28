@@ -33,12 +33,12 @@ fn main() {
 fn generate_runtime() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let runtime_path = out_dir.join("runtime.rs");
-    let hom = PathBuf::from("src/hom");
+    let hom = PathBuf::from("hom-std");
 
     // builtin.rs — macros (range!, len!, filter!, map!, dict!, set!, slice!, homun_in!),
     // traits (HomunIndex, HomunLen, HomunContains)
-    let builtin = std::fs::read_to_string(hom.join("builtin.rs"))
-        .expect("src/hom/builtin.rs not found — is the hom submodule initialized?");
+    let builtin =
+        std::fs::read_to_string(hom.join("builtin.rs")).expect("hom-std/builtin.rs not found");
 
     // std/ — standard library (str, math, collection, dict, stack, deque, io)
     // Read mod.rs but strip include!() lines (we inline the sub-files directly)
@@ -83,15 +83,15 @@ fn generate_runtime() {
 
     std::fs::write(&runtime_path, &code).unwrap();
     println!(
-        "cargo:warning=Generated runtime.rs ({} bytes) from src/hom/",
+        "cargo:warning=Generated runtime.rs ({} bytes) from hom-std/",
         code.len()
     );
 
     // Rerun if any hom runtime file changes
-    println!("cargo:rerun-if-changed=src/hom/builtin.rs");
-    println!("cargo:rerun-if-changed=src/hom/std/mod.rs");
-    println!("cargo:rerun-if-changed=src/hom/re.rs");
-    println!("cargo:rerun-if-changed=src/hom/heap.rs");
+    println!("cargo:rerun-if-changed=hom-std/builtin.rs");
+    println!("cargo:rerun-if-changed=hom-std/std/mod.rs");
+    println!("cargo:rerun-if-changed=hom-std/re.rs");
+    println!("cargo:rerun-if-changed=hom-std/heap.rs");
 }
 
 fn find_homunc() -> PathBuf {

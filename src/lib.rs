@@ -103,31 +103,31 @@ pub mod main_hom {
     include!(concat!(env!("OUT_DIR"), "/main.rs"));
 }
 
-// ── Unit tests for src/hom/ runtime modules ──────────────────────────────────
-// Tests are extracted from src/hom/*.rs into src/hom/tests/ and wired here.
+// ── Unit tests for hom-std runtime modules ──────────────────────────────────
+// Tests are in tests/std-tests/, runtime source in hom-std/.
 #[cfg(test)]
 mod hom_tests {
     // heap.rs and re.rs are included in crate::runtime — use their public fns directly.
     use crate::runtime::*;
 
-    include!("hom/tests/test_heap.rs");
-    include!("hom/tests/test_re.rs");
+    include!("../tests/std-tests/test_heap.rs");
+    include!("../tests/std-tests/test_re.rs");
 
     // chars.rs, str_ext.rs, dict.rs are NOT in runtime (embedded-only modules).
     // Include the source file first to get the function definitions, then the tests.
     mod chars_mod {
-        include!("hom/chars.rs");
-        include!("hom/tests/test_chars.rs");
+        include!("../hom-std/chars.rs");
+        include!("../tests/std-tests/test_chars.rs");
     }
 
     mod str_ext_mod {
-        include!("hom/str_ext.rs");
-        include!("hom/tests/test_str_ext.rs");
+        include!("../hom-std/str_ext.rs");
+        include!("../tests/std-tests/test_str_ext.rs");
     }
 
     mod dict_mod {
-        include!("hom/dict.rs");
-        include!("hom/tests/test_dict.rs");
+        include!("../hom-std/dict.rs");
+        include!("../tests/std-tests/test_dict.rs");
     }
 }
 
@@ -135,14 +135,14 @@ mod hom_tests {
 // builtin_rs() is used by main_hom::preamble() to get the builtin.rs content.
 // include_str! resolves relative to this file (src/lib.rs → src/hom/builtin.rs).
 pub fn builtin_rs() -> &'static str {
-    include_str!("hom/builtin.rs")
+    include_str!("../hom-std/builtin.rs")
 }
 
 // resolver.rs calls embedded_rs() from the crate root, so it must be pub here.
 pub fn embedded_rs(name: &str) -> Option<String> {
     match name {
         "std" => {
-            let mod_rs: String = include_str!("hom/std/mod.rs")
+            let mod_rs: String = include_str!("../hom-std/std/mod.rs")
                 .lines()
                 .filter(|l| !l.trim().starts_with("include!("))
                 .collect::<Vec<_>>()
@@ -150,20 +150,20 @@ pub fn embedded_rs(name: &str) -> Option<String> {
             Some(format!(
                 "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
                 mod_rs,
-                include_str!("hom/std/str.rs"),
-                include_str!("hom/std/math.rs"),
-                include_str!("hom/std/collection.rs"),
-                include_str!("hom/std/dict.rs"),
-                include_str!("hom/std/stack.rs"),
-                include_str!("hom/std/deque.rs"),
-                include_str!("hom/std/io.rs"),
+                include_str!("../hom-std/std/str.rs"),
+                include_str!("../hom-std/std/math.rs"),
+                include_str!("../hom-std/std/collection.rs"),
+                include_str!("../hom-std/std/dict.rs"),
+                include_str!("../hom-std/std/stack.rs"),
+                include_str!("../hom-std/std/deque.rs"),
+                include_str!("../hom-std/std/io.rs"),
             ))
         }
-        "re" => Some(include_str!("hom/re.rs").to_string()),
-        "heap" => Some(include_str!("hom/heap.rs").to_string()),
-        "chars" => Some(include_str!("hom/chars.rs").to_string()),
-        "str_ext" => Some(include_str!("hom/str_ext.rs").to_string()),
-        "dict" => Some(include_str!("hom/dict.rs").to_string()),
+        "re" => Some(include_str!("../hom-std/re.rs").to_string()),
+        "heap" => Some(include_str!("../hom-std/heap.rs").to_string()),
+        "chars" => Some(include_str!("../hom-std/chars.rs").to_string()),
+        "str_ext" => Some(include_str!("../hom-std/str_ext.rs").to_string()),
+        "dict" => Some(include_str!("../hom-std/dict.rs").to_string()),
         _ => None,
     }
 }

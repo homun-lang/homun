@@ -73,6 +73,37 @@ pub fn homunc_version() -> String {
     env!("HOMUN_VERSION").to_string()
 }
 
+/// Emit the full embedded runtime (builtin + std + re + heap) to stdout.
+/// Users of multi-module Cargo projects can call `homunc --emit-runtime > src/runtime.rs`
+/// instead of needing the hom-std submodule.
+pub fn emit_runtime_fn() {
+    print!("{}", preamble());
+    // std
+    if let Some(content) = embedded_rs("std") {
+        print!("{}\n", content);
+    }
+    // re
+    if let Some(content) = embedded_rs("re") {
+        print!("{}\n", content);
+    }
+    // heap
+    if let Some(content) = embedded_rs("heap") {
+        print!("{}\n", content);
+    }
+    // chars
+    if let Some(content) = embedded_rs("chars") {
+        print!("{}\n", content);
+    }
+    // str_ext
+    if let Some(content) = embedded_rs("str_ext") {
+        print!("{}\n", content);
+    }
+    // dict
+    if let Some(content) = embedded_rs("dict") {
+        print!("{}\n", content);
+    }
+}
+
 /// Extract the Ok value from a Result<String, String>.
 /// On Err, prints the error to stderr and exits with code 1.
 pub fn result_ok_or_exit(result: Result<String, String>) -> String {

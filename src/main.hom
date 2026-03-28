@@ -53,6 +53,7 @@ print_help := () -> _ {
   print("USAGE:")
   print("  homunc <input.hom>            Compile and print Rust to stdout")
   print("  homunc <input.hom> -o out.rs  Compile and write to file")
+  print("  homunc --emit-runtime         Print embedded runtime to stdout")
   print("  homunc -v, --version          Show version")
   print("  homunc -h, --help             Show this message")
   print("")
@@ -115,8 +116,13 @@ main := () -> _ {
   raw := has_flag(args, "--raw")
   module := has_flag(args, "--module")
   raw_final := raw or module
+  emit_rt := has_flag(args, "--emit-runtime")
   filtered := filter_flags(args, "--raw", "--module")
+  filtered := filter_flags(filtered, "--emit-runtime", "--emit-runtime")
   n := len(filtered)
+  if (emit_rt) {
+    emit_runtime_fn()
+  } else {
   if (n == 0) {
     compile_from_stdin(raw_final)
   } else {
@@ -147,5 +153,6 @@ main := () -> _ {
         }
       }
     }
+  }
   }
 }

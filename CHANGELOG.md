@@ -6,6 +6,17 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.79 — 2026-03-28 — Embedded runtime, remove hom submodule
+
+- Removed `src/hom` git submodule — runtime files now in `hom-std/` as regular tracked files
+- Removed `.gitmodules` — no submodule dependencies
+- Runtime tests moved from `hom-std/tests/` to `tests/std-tests/`
+- Added `--emit-runtime` flag — prints full embedded runtime (builtin + std + re + heap + chars + str_ext + dict) to stdout
+- Multi-module Cargo projects no longer need `hom/` submodule: `homunc --emit-runtime > src/runtime.rs`
+- Updated `build.rs` and `lib.rs` paths from `src/hom/` to `hom-std/`
+
+---
+
 ### v0.78 — 2026-03-21 — Clone elision in hom-std, extract tests, heap &mut
 
 - `src/hom/` tests extracted from inline `#[cfg(test)]` blocks into `src/hom/tests/test_*.rs`
