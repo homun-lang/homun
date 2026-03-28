@@ -497,10 +497,9 @@ opencv/
 
 From outside: `use opencv` resolves to `opencv/mod.hom`, which pulls in siblings via normal `use`.
 
-### Standard library (`hom/`)
+### Standard library (embedded in `homunc`)
 
-Runtime libraries live in the `hom/` submodule ([homun-std](https://github.com/homun-lang/homun/homun-std)).
-User writes `use std` — the compiler resolves it to `hom/std/`.
+All runtime libraries are embedded in the `homunc` binary. No external files or submodules needed.
 
 ```
 use std    // provides: range, len, filter, map, reduce, split, join, abs, min, max, ...
@@ -509,23 +508,17 @@ use heap   // priority queue: heap_new, heap_push, heap_pop, heap_len, heap_is_e
 use chars  // char utils: is_alpha, is_digit, is_alnum, is_space
 ```
 
-**Standalone usage** — the runtime is embedded in the `homunc` binary. No external dependencies needed:
+**Standalone usage** — just compile and run:
 
 ```bash
 homunc main.hom -o main.rs
-rustc main.rs -o main        # self-contained, no hom/ needed
+rustc main.rs -o main        # self-contained, no extra files needed
 ```
 
-**Multi-module Cargo projects** — add [homun-std](https://github.com/homun-lang/homun/homun-std) as a git submodule so all modules share one runtime:
+**Multi-module Cargo projects** — extract the runtime from `homunc`, then compile each module:
 
 ```bash
-git submodule add https://github.com/homun-lang/homun/homun-std.git src/hom
-```
-
-Then in `build.rs`, concatenate `src/hom/*.rs` into a shared `runtime.rs`.
-Each `.hom` module is compiled with `homunc --module` which strips runtime embedding:
-
-```bash
+homunc --emit-runtime > src/runtime.rs
 homunc --module src/types.hom -o out/types.rs
 ```
 
@@ -542,7 +535,8 @@ cargo test --test hom_std     # run hom-std runtime tests
 ```
 
 - `tests/examples.rs` — compiles and runs every `_site/examples/*.hom` file
-- `tests/hom_std.rs` — compiles and runs `runtime/test_*.hom` (hom-std tests)
+- `tests/hom_std.rs` — compiles and runs hom-std test `.hom` files
+- `tests/std-tests/` — unit tests for hom-std runtime modules
 
 ---
 

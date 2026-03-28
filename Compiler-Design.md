@@ -11,29 +11,29 @@ Source (.hom)
     │
     ▼
 ┌──────────┐
-│ Resolver │  src/resolver.rs — multi-file dependency resolution (DFS)
+│ Resolver │  src/resolver.hom — multi-file dependency resolution (DFS)
 └────┬─────┘    • 4-candidate search (mod.hom, .hom, mod.rs, .rs)
      │           • cycle detection (three-color algorithm)
-     │           • .rs include!() expansion
+     │           • embedded runtime fallback (no hom/ folder needed)
      ▼
 ┌─────────┐
-│  Lexer  │  src/lexer.rs   — tokenises Homun source into Vec<Token>
+│  Lexer  │  src/lexer.hom  — tokenises Homun source into Vec<Token>
 └────┬────┘
      │ Vec<Token>
      ▼
 ┌─────────┐
-│  Parser │  src/parser.rs  — recursive-descent Pratt parser → AST
+│  Parser │  src/parser.hom — recursive-descent Pratt parser → AST
 └────┬────┘
      │ Program (AST)
      ▼
 ┌──────────┐
-│   Sema   │  src/sema.rs   — semantic analysis:
+│   Sema   │  src/sema.hom  — semantic analysis:
 └────┬─────┘    • snake_case enforcement
      │           • undefined reference check
      │ Program   • (skips undef check when .rs deps present)
      ▼
 ┌──────────┐
-│ Codegen  │  src/codegen.rs — walks AST, emits Rust text
+│ Codegen  │  src/codegen.hom — walks AST, emits Rust text
 └────┬─────┘
      │ Rust source (.rs)
      ▼
@@ -61,6 +61,9 @@ homunc examples/quicksort.hom
 
 # Compile to file
 homunc examples/fizzbuzz.hom -o output.rs
+
+# Emit embedded runtime (for multi-module Cargo projects)
+homunc --emit-runtime > src/runtime.rs
 
 # Version / help
 homunc -v
@@ -121,9 +124,11 @@ When compiling from stdin (no filesystem), `use` statements pass through as `use
 
 ---
 
-## Runtime (`runtime/builtin.rs`)
+## Runtime (embedded in `homunc`)
 
-The compiler always prepends `runtime/builtin.rs` to every output file via `include_str!()` at compiler build time. This provides:
+All runtime libraries are embedded in the `homunc` binary at compile time. No external files or submodules needed.
+
+The compiler prepends `builtin.rs` to every output file. This provides:
 
 | Helper | Description |
 |---|---|
@@ -134,7 +139,9 @@ The compiler always prepends `runtime/builtin.rs` to every output file via `incl
 | `str_of(x)` | Convert anything Display to String |
 | `dict![]`, `set![]`, `slice![]` | Collection construction macros |
 
-The `std` library (`runtime/std/`) is also embedded in the compiler binary via `include_str!()` and inlined when user code writes `use std`. It provides additional helpers (range, len, filter, map, reduce, string/math/collection utilities). Users do not need a `std/` folder on disk — the resolver checks embedded libraries automatically.
+The `std` library is also embedded and inlined when user code writes `use std`. It provides additional helpers (range, len, filter, map, reduce, string/math/collection utilities).
+
+For multi-module Cargo projects, use `homunc --emit-runtime > src/runtime.rs` to extract the full runtime, then compile each `.hom` module with `homunc --module` (which strips runtime embedding).
 
 ---
 
@@ -193,30 +200,56 @@ The `Sema` pass enforces Homun's rules **before** codegen:
 ```
 Homun-Lang/
 ├── Cargo.toml
-├── Compiler.md
+├── Compiler-Design.md
 ├── Dockerfile           — cross-compilation (linux x86_64, aarch64, windows)
 ├── Dockerfile.wasm      — WASM build (wasm32-wasi)
+├── hom-std/             — runtime library source (embedded in homunc at build time)
+│   ├── builtin.rs       — macros (range!, len!, filter!, map!, dict!, set!, slice!)
+│   ├── std/             — standard library (str, math, collection, dict, stack, deque, io)
+│   ├── re.rs            — regex helpers
+│   ├── heap.rs          — priority queue
+│   ├── chars.rs         — character classification
+│   ├── str_ext.rs       — string utilities
+│   └── dict.rs          — HashMap helpers
 ├── src/
-│   ├── main.rs          — CLI entry point, preamble, stdin/file compilation
-│   ├── build.rs         — sets HOMUN_VERSION from git tag or env var
-│   ├── lexer.rs         — tokeniser
-│   ├── ast.rs           — abstract syntax tree types
-│   ├── parser.rs        — recursive-descent parser
-│   ├── resolver.rs      — multi-file dependency resolution
-│   ├── sema.rs          — semantic analysis
-│   └── codegen.rs       — Rust code emitter
+│   ├── main.rs          — thin wrapper calling main_hom::main()
+│   ├── build.rs         — bootstraps .hom compilation, generates runtime.rs
+│   ├── lib.rs           — wires compiled .hom modules + embedded runtime
+│   ├── ast.rs           — abstract syntax tree types (Rust)
+│   ├── main.hom         — CLI entry point (self-hosted)
+│   ├── lexer.hom        — tokeniser (self-hosted)
+│   ├── parser.hom       — recursive-descent parser (self-hosted)
+│   ├── resolver.hom     — multi-file dependency resolution (self-hosted)
+│   ├── sema.hom         — semantic analysis (self-hosted)
+│   ├── codegen.hom      — Rust code emitter (self-hosted)
+│   ├── *_imp.rs         — Rust helpers for each .hom module
+│   └── dep/             — shared Rust helpers (AST accessors, codegen helpers, scope)
+├── tests/
+│   ├── examples.rs      — compiles + runs _site/examples/*.hom
+│   ├── hom_std.rs       — compiles + runs runtime test .hom files
+│   └── std-tests/       — unit tests for hom-std runtime modules
 └── _site/
     ├── index.html       — WASM playground
-    ├── llm.txt          — doc for llm
-    └── examples/
-        ├── *.hom        — example Homun programs
-        └── ext/         — extended library (.rs)
-            ├── mod.rs
-            ├── str.rs
-            ├── math.rs
-            ├── collection.rs
-            ├── dict.rs
-            ├── stack.rs
-            ├── deque.rs
-            └── io.rs
+    ├── llm.txt          — language spec for LLMs
+    └── examples/        — example .hom programs
 ```
+
+## hom is learn from
+
+| Language | What Homun Took |
+|---|---|
+| **Rust** | Compilation target, type system, ECS patterns, RON, error philosophy |
+| **Svelte** | Compile-time transformation philosophy, "disappear at build time" |
+| **Python** | `and/or/not/in`, slicing, `range`, `for x in y`, readable ergonomics |
+| **Haskell/ML** | Lambdas-first, last-expression return, `match` exhaustiveness, map/filter/reduce |
+| **Elixir/F#** | Pipe operator `\|`, function composition style |
+| **Go** | No classes, errors as values, one obvious way, anti-ceremony |
+| **C++** | `:=` binding operator — inspired by `auto` type deduction but without the keyword |
+| **Lua** | Game scripting niche, thin layer over native engine, anonymous structs |
+| **GDScript** | Designer-friendly motivation, hide systems complexity |
+| **OCaml** | Auto-detected recursion (hidden `rec`) |
+
+
+## hemi-self-host
+
+homunc source cod is 30% .hom + 70% .rs . hom will not become fully self-hosting.
