@@ -55,10 +55,10 @@ dfs := (graph, node, visited) -> {
 fizz_buzz := (n: int) -> @[str] {
   result := @[]
   for i in range(1, n+1) {
-    value := match (i % 15, i % 3, i % 5) {
-      (0, _, _) -> "FizzBuzz"
-      (_, 0, _) -> "Fizz"
-      (_, _, 0) -> "Buzz"
+    value := match (i % 3, i % 5) {
+      (0, 0) -> "FizzBuzz"
+      (0, _) -> "Fizz"
+      (_, 0) -> "Buzz"
       _         -> str(i)
     }
     result := result + @[value]
