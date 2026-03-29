@@ -85,6 +85,25 @@ pub fn emit_runtime_fn() {
     }
 }
 
+/// Deduplicate `use` import lines in generated Rust source.
+/// When multiple embedded libraries are inlined (e.g. re + heap),
+/// they may both contain `use std::cell::RefCell;` etc.
+fn dedup_use_lines(src: String) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = String::with_capacity(src.len());
+    for line in src.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("use ") && trimmed.ends_with(';') {
+            if !seen.insert(trimmed.to_string()) {
+                continue; // duplicate use line — skip
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 /// Extract the Ok value from a Result<String, String>.
 /// On Err, prints the error to stderr and exits with code 1.
 pub fn result_ok_or_exit(result: Result<String, String>) -> String {
@@ -126,7 +145,7 @@ pub fn compile_source_fn(source: String, raw: bool) -> Result<String, String> {
         rs_content,
     );
     let prefix = if raw { String::new() } else { preamble() };
-    Ok(format!("{}{}", prefix, code))
+    Ok(dedup_use_lines(format!("{}{}", prefix, code)))
 }
 
 /// Compile a .hom file with full multi-file resolution, returning Rust code or an error.
@@ -145,5 +164,5 @@ pub fn compile_file_fn(path: String, raw: bool, module: bool) -> Result<String, 
             output.push('\n');
         }
     }
-    Ok(output)
+    Ok(dedup_use_lines(output))
 }

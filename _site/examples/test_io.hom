@@ -1,0 +1,36 @@
+// ─── examples/test_io.hom ──────────────────────────────────────
+// Integration test for std IO: write_file, read_file
+// Writes a temp file, reads it back, verifies content matches.
+
+use std
+
+main := () -> _ {
+  print("=== test_io ===")
+
+  path := ".tmp/homun_test_io_output.txt"
+  content := "hello from homun"
+
+  // write
+  write_file(path, content)
+  print("  ok: write_file")
+
+  // read back
+  result := read_file(path)
+  if (result == content) {
+    print("  ok: read_file matches written content")
+  } else {
+    print("FAIL: read_file content mismatch")
+  }
+
+  // overwrite
+  content2 := "overwritten"
+  write_file(path, content2)
+  result2 := read_file(path)
+  if (result2 == content2) {
+    print("  ok: overwrite + read back")
+  } else {
+    print("FAIL: overwrite content mismatch")
+  }
+
+  print("=== done ===")
+}

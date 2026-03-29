@@ -6,6 +6,15 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.80 — 2026-03-29 — Examples, dedup use lines, IO docs
+
+- Added `top_k_words.hom` example — Top K Frequent Words using std + re + heap
+- Added `test_io.hom` example — IO integration test (write_file, read_file)
+- Added `dedup_use_lines()` — fixes duplicate `use` imports when multiple embedded libs are inlined
+- Updated README.md, llm.txt with new examples and IO API docs
+
+---
+
 ### v0.79 — 2026-03-28 — Embedded runtime, remove hom submodule
 
 - Removed `src/hom` git submodule — runtime files now in `hom-std/` as regular tracked files

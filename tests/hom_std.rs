@@ -5,7 +5,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn compile_and_run(hom_path: &Path) -> String {
-    let tmp = std::env::temp_dir().join("homun_tests_std");
+    let tmp = std::path::PathBuf::from(".tmp/homun_tests_std");
     fs::create_dir_all(&tmp).unwrap();
 
     let stem = hom_path.file_stem().unwrap().to_string_lossy();
@@ -57,7 +57,7 @@ fn compile_and_run(hom_path: &Path) -> String {
 /// `deps` is a list of `(crate_name, version)` pairs to add to Cargo.toml.
 fn compile_and_run_cargo(hom_path: &Path, deps: &[(&str, &str)]) -> String {
     let stem = hom_path.file_stem().unwrap().to_string_lossy();
-    let tmp = std::env::temp_dir().join(format!("homun_tests_cargo_{}", stem));
+    let tmp = std::path::PathBuf::from(format!(".tmp/homun_tests_cargo_{}", stem));
 
     // Set up temp Cargo project
     let src_dir = tmp.join("src");
@@ -122,4 +122,31 @@ fn test_hom_std_heap() {
 fn test_hom_std_chars() {
     let out = compile_and_run(Path::new("_site/examples/test_chars.hom"));
     assert!(!out.is_empty(), "test_chars should produce output");
+}
+
+#[test]
+fn test_hom_std_io() {
+    let out = compile_and_run(Path::new("_site/examples/test_io.hom"));
+    assert!(out.contains("ok: write_file"), "test_io should write file");
+    assert!(
+        out.contains("ok: read_file matches written content"),
+        "test_io should read back matching content"
+    );
+    assert!(!out.contains("FAIL"), "test_io should have no failures");
+}
+
+#[test]
+fn test_hom_std_top_k_words() {
+    let out = compile_and_run_cargo(
+        Path::new("_site/examples/top_k_words.hom"),
+        &[("regex", "1")],
+    );
+    assert!(
+        out.contains("Top 3 words:"),
+        "top_k_words should print top 3"
+    );
+    assert!(
+        out.contains("Top 2 words:"),
+        "top_k_words should print top 2"
+    );
 }

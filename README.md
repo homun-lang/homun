@@ -65,6 +65,49 @@ fizz_buzz := (n: int) -> @[str] {
   }
   result
 }
+
+// Top K Frequent Words — regex + heap + dict membership
+use std
+use re
+use heap
+
+top_k_words := (words: @[str], k: int) -> @[str] {
+  keys := @[]
+  counts := @[]
+  for w in words {
+    if (len(w) == 0) { continue }
+    if (not re_is_match("^[a-zA-Z]+$", w)) { continue }
+    found := false
+    j := 0
+    while (j < len(keys)) {
+      if (keys[j] == w) {
+        counts[j] := counts[j] + 1
+        found := true
+      }
+      j := j + 1
+    }
+    if (not found) {
+      keys := keys + @[w]
+      counts := counts + @[1]
+    }
+  }
+  h := heap_new()
+  i := 0
+  while (i < len(keys)) {
+    heap_push(h, 0 - counts[i], keys[i])
+    i := i + 1
+  }
+  result := @[]
+  i := 0
+  while (i < k and not heap_is_empty(h)) {
+    match heap_pop(h) {
+      Some((_, word)) -> { result := result + @[word] }
+      none -> {}
+    }
+    i := i + 1
+  }
+  result
+}
 ```
 
 ---
