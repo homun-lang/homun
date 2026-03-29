@@ -5,7 +5,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn compile_and_run(hom_path: &Path) -> String {
-    let tmp = std::env::temp_dir().join("homun_tests");
+    let tmp = std::path::PathBuf::from(".tmp/homun_tests");
     fs::create_dir_all(&tmp).unwrap();
 
     let stem = hom_path.file_stem().unwrap().to_string_lossy();

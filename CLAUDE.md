@@ -1,5 +1,7 @@
 # Dev Rules
 
+fuck you don't touch /tmp/, use ./.tmp/
+
 ## On Start — Read These First
 
 1. `README.md` — language reference and examples
