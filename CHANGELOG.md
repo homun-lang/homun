@@ -23,6 +23,10 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 - Added `--emit-runtime` flag — prints full embedded runtime (builtin + std + re + heap + chars + str_ext + dict) to stdout
 - Multi-module Cargo projects no longer need `hom/` submodule: `homunc --emit-runtime > src/runtime.rs`
 - Updated `build.rs` and `lib.rs` paths from `src/hom/` to `hom-std/`
+- Added `top_k_words.hom` example — Top K Frequent Words using std + re + heap
+- Added `test_io.hom` example — IO integration test (write_file, read_file)
+- Added `dedup_use_lines()` — fixes duplicate `use` imports when multiple embedded libs are inlined
+- Updated README.md, llm.txt with new examples and IO API docs
 
 ---
 
