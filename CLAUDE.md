@@ -17,9 +17,9 @@ Homun-Lang is the `homunc` compiler that transpiles `.hom` files to `.rs` (Rust)
 
 Key directories:
 ```
-src/           — Compiler source code (lexer, parser, codegen)
-runtime/       — Runtime support library for generated Rust code
-tests/         — Test suite
+src/           — Compiler source code (.hom + _imp.rs + dep/)
+hom-std/       — Runtime library source (embedded in homunc at build time)
+tests/         — Test suite (examples, hom_std, std-tests)
 _site/         — Documentation site with examples
 ```
 
