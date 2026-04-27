@@ -12,15 +12,16 @@
 
 pub fn stmt_kind(s: Stmt) -> String {
     match s {
-        Stmt::Bind(_, _) => "Bind".to_string(),
+        Stmt::Bind(_, _, _) => "Bind".to_string(),
         Stmt::BindMut(_, _) => "BindMut".to_string(),
         Stmt::BindPat(_, _) => "BindPat".to_string(),
         Stmt::BindPatMut(_, _) => "BindPatMut".to_string(),
         Stmt::Assign(_, _) => "Assign".to_string(),
         Stmt::Use(_) => "Use".to_string(),
-        Stmt::StructDef(_, _) => "StructDef".to_string(),
-        Stmt::EnumDef(_, _) => "EnumDef".to_string(),
+        Stmt::StructDef(_, _, _) => "StructDef".to_string(),
+        Stmt::EnumDef(_, _, _) => "EnumDef".to_string(),
         Stmt::Expression(_) => "Expression".to_string(),
+        Stmt::InnerAttr(_) => "InnerAttr".to_string(),
     }
 }
 
@@ -77,10 +78,10 @@ pub fn pat_kind(p: Pat) -> String {
 /// Returns the name from Stmt::Bind, Stmt::StructDef, or Stmt::EnumDef.
 pub fn stmt_bind_name(s: Stmt) -> String {
     match s {
-        Stmt::Bind(n, _) => n,
+        Stmt::Bind(n, _, _) => n,
         Stmt::BindMut(n, _) => n,
-        Stmt::StructDef(n, _) => n,
-        Stmt::EnumDef(n, _) => n,
+        Stmt::StructDef(n, _, _) => n,
+        Stmt::EnumDef(n, _, _) => n,
         _ => panic!("stmt_bind_name: not Bind/BindMut/StructDef/EnumDef"),
     }
 }
@@ -88,7 +89,7 @@ pub fn stmt_bind_name(s: Stmt) -> String {
 /// Returns the expression from Stmt::Bind.
 pub fn stmt_bind_expr(s: Stmt) -> Expr {
     match s {
-        Stmt::Bind(_, e) => e,
+        Stmt::Bind(_, e, _) => e,
         _ => panic!("stmt_bind_expr: not Bind"),
     }
 }
@@ -751,7 +752,7 @@ pub fn expr_loadron_type(e: Expr) -> TypeExpr {
 /// Returns the field list from Stmt::StructDef.
 pub fn stmt_structdef_fields(s: Stmt) -> Vec<FieldDef> {
     match s {
-        Stmt::StructDef(_, fields) => fields,
+        Stmt::StructDef(_, fields, _) => fields,
         _ => panic!("stmt_structdef_fields: not StructDef"),
     }
 }
@@ -759,8 +760,18 @@ pub fn stmt_structdef_fields(s: Stmt) -> Vec<FieldDef> {
 /// Returns the variant list from Stmt::EnumDef.
 pub fn stmt_enumdef_variants(s: Stmt) -> Vec<VariantDef> {
     match s {
-        Stmt::EnumDef(_, variants) => variants,
+        Stmt::EnumDef(_, variants, _) => variants,
         _ => panic!("stmt_enumdef_variants: not EnumDef"),
+    }
+}
+
+/// Returns the outer attrs from Stmt::Bind, Stmt::StructDef, or Stmt::EnumDef; empty otherwise.
+pub fn stmt_attrs(s: Stmt) -> Vec<String> {
+    match s {
+        Stmt::Bind(_, _, attrs) => attrs,
+        Stmt::StructDef(_, _, attrs) => attrs,
+        Stmt::EnumDef(_, _, attrs) => attrs,
+        _ => Vec::new(),
     }
 }
 
@@ -769,6 +780,14 @@ pub fn stmt_use_path(s: Stmt) -> Vec<String> {
     match s {
         Stmt::Use(path) => path,
         _ => panic!("stmt_use_path: not Use"),
+    }
+}
+
+/// Returns the attribute body string from Stmt::InnerAttr.
+pub fn stmt_inner_attr_val(s: Stmt) -> String {
+    match s {
+        Stmt::InnerAttr(body) => body,
+        _ => panic!("stmt_inner_attr_val: not InnerAttr"),
     }
 }
 

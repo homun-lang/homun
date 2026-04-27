@@ -127,6 +127,18 @@ fn test_example_mut_param() {
 }
 
 #[test]
+fn test_example_attr_derive() {
+    let out = compile_and_run(Path::new("_site/examples/attr_derive.hom"));
+    assert!(out.contains("p=(3,4) q=(3,4)"));
+}
+
+#[test]
+fn test_example_attr_cfg() {
+    let out = compile_and_run(Path::new("_site/examples/attr_cfg.hom"));
+    assert!(out.contains("sq(7)=49"));
+}
+
+#[test]
 fn test_example_struct_destruct() {
     let out = compile_and_run(Path::new("_site/examples/struct_destruct.hom"));
     assert!(

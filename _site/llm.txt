@@ -126,6 +126,28 @@ match shape {
 }
 ```
 
+### Attributes (`@` → Rust `#[..]`)
+```hom
+@derive(Clone, Debug, PartialEq)
+Point := struct { x: int, y: int }
+
+@inline
+@must_use
+sq := (x: int) -> int { x * x }
+
+@cfg(any(unix, target_os = "macos"))
+unix_only := () -> _ { print("posix") }
+
+@!allow(dead_code)        // file-top inner attribute
+@!no_std
+```
+
+`@<x>` emits Rust `#[<x>]` above the next struct / enum / top-level fn binding.
+`@!<x>` emits `#![<x>]` at the top of the generated `.rs` (file-level).
+Body is opaque token-stream passthrough — bare `=`, `::`, suffixed numerics flow through untouched. Only `()`, `[]`, `{}` must be balanced; otherwise ends at end-of-line.
+Collection literals `@[..]` / `@{..}` keep working — parser disambiguates by position (decl vs expression).
+Names are not validated by Homun — `rustc` reports unknown attributes.
+
 ### Destructuring
 ```hom
 a, b := b, a                   // swap (immutable rebind)

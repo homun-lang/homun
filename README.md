@@ -166,6 +166,9 @@ No bare `=` exists. `:=` and `::=` bind, `==` compares. No ambiguity.
 | `+`, `-`, `*`, `/`, `%` | Arithmetic |
 | `\|` | Pipe — `x \| f(args)` desugars to `f(x, args)` |
 | `.` | Field access / lambda-field call |
+| `@<x>` | Outer attribute — emits Rust `#[<x>]` above next decl (see [Attributes](#attributes-)) |
+| `@!<x>` | Inner attribute — emits Rust `#![<x>]` at file top |
+| `@[..]` / `@{..}` | Collection literal (Vec / dict / set) |
 
 ---
 
@@ -488,6 +491,39 @@ result := match dir {
 ```
 
 `match` is exhaustive — compiler warns if not all variants are covered and no `_` exists.
+
+---
+
+## Attributes (`@`)
+
+`@<content>` and `@!<content>` are 1-to-1 passthroughs to Rust attributes. Homun does not interpret the body — copy-paste from Rust docs and crate READMEs works as-is.
+
+| Syntax | Emits | Attaches to |
+|---|---|---|
+| `@<x>` | `#[<x>]` | next struct / enum / top-level fn binding |
+| `@!<x>` | `#![<x>]` | the file (must appear at file top, before any decl) |
+| `@[..]` / `@{..}` | unchanged | collection literals (parser disambiguates by position) |
+
+```
+@derive(Clone, Debug, PartialEq)
+Player := struct { name: str, hp: int }
+
+@inline
+@must_use
+sq := (x: int) -> int { x * x }
+
+@cfg(any(unix, target_os = "macos"))
+unix_only := () -> _ { print("posix") }
+
+@!allow(dead_code)        // applies to whole compiled module
+@!no_std
+```
+
+After `@` / `@!` the body is a Rust-token-stream passthrough zone — bare `=`, `::`, suffixed numerics, raw strings all flow through untouched. Only `()`, `[]`, `{}` must stay balanced; the body otherwise ends at end-of-line.
+
+Multiple attrs stack in source order. Attribute names are not validated by Homun — `rustc` reports unknown attributes.
+
+Out of scope (v0.81): attributes on local `let`, expressions, fn params, struct fields, enum variants. They are top-level decl-only.
 
 ---
 

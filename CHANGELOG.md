@@ -6,6 +6,19 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.81 — 2026-04-27 — `@attr` syntax for Rust attribute passthrough
+
+- Added `@<content>` outer attribute → emits Rust `#[<content>]` above the next struct, enum, or top-level fn binding
+- Added `@!<content>` inner attribute → emits Rust `#![<content>]` at output top (file-level)
+- Pure token-stream passthrough — no Homun-side interpretation; copy-paste from Rust docs works (`@derive(Clone, Debug)`, `@cfg(any(unix, target_os = "macos"))`, `@inline`, `@!allow(dead_code)`)
+- Lexer: `!` added as `Bang` token; `@` unchanged; collection literals `@[..]` / `@{..}` keep working (parser disambiguates by position)
+- AST: `Stmt::StructDef` / `Stmt::EnumDef` / `Stmt::Bind` carry `attrs: Vec<String>`; new `Stmt::InnerAttr(String)` variant
+- Parser: `parse_program` drains `@` / `@!` before each decl; `@!` errors if it appears after the first non-attr decl
+- Codegen: `emit_attrs()` helper prints attrs above struct/enum/fn; inner attrs collected and emitted as `#![..]` at output top
+- Examples: `attr_derive.hom`, `attr_cfg.hom` — registered in `tests/examples.rs`
+
+---
+
 ### v0.80 — 2026-03-29 — Examples, dedup use lines, IO docs
 
 - Added `top_k_words.hom` example — Top K Frequent Words using std + re + heap

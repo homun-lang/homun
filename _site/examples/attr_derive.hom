@@ -1,0 +1,12 @@
+// examples/attr_derive.hom
+// Tests @derive - user-supplied derive flows into Rust as #[derive(...)]
+use std
+
+@derive(Clone, Debug, PartialEq)
+Point := struct { x: int, y: int }
+
+main := () -> _ {
+  p := Point { x: 3, y: 4 }
+  q := p             // requires Clone
+  print("p=(${p.x},${p.y}) q=(${q.x},${q.y})")
+}

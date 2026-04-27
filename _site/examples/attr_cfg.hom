@@ -1,0 +1,14 @@
+// examples/attr_cfg.hom
+// Tests @inline / @must_use / @allow flow through to Rust
+use std
+
+@inline
+@must_use
+sq := (x: int) -> int { x * x }
+
+@allow(dead_code)
+unused := () -> int { 99 }
+
+main := () -> _ {
+  print("sq(7)=${sq(7)}")
+}

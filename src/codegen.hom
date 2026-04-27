@@ -934,6 +934,22 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
 }
 
 
+// ─── emit_attrs ───────────────────────────────────────────────────────────────
+// Emit #[attr] lines for a list of attribute bodies. Empty list emits nothing.
+
+emit_attrs := (attrs: @[str]) -> str {
+  parts := @[]
+  for a in attrs {
+    push(parts, "#[" + a + "]")
+  }
+  if (len(parts) == 0) {
+    ""
+  } else {
+    join(parts, "\n") + "\n"
+  }
+}
+
+
 // ─── cg_top_fn ────────────────────────────────────────────────────────────────
 // Emit a top-level pub fn.
 
@@ -1001,7 +1017,18 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         push(field_lines, ind(i + 1) + "pub " + fielddef_name(f) + ": " + ty_str + ",")
         fi := fi + 1
       }
-      "#[derive(Debug, Clone, PartialEq)]\npub struct " + name + " {\n" + join(field_lines, "\n") + "\n}"
+      attrs := stmt_attrs(stmt)
+      attrs_str := emit_attrs(attrs)
+      has_derive := false
+      for a in attrs {
+        if (contains(a, "derive(")) { has_derive := true }
+      }
+      body := name + " {\n" + join(field_lines, "\n") + "\n}"
+      if (has_derive) {
+        attrs_str + "pub struct " + body
+      } else {
+        attrs_str + "#[derive(Debug, Clone, PartialEq)]\npub struct " + body
+      }
     }
     "EnumDef" -> {
       name := stmt_bind_name(stmt)
@@ -1020,7 +1047,18 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         push(var_lines, vline)
         vi := vi + 1
       }
-      "#[derive(Debug, Clone, PartialEq)]\npub enum " + name + " {\n" + join(var_lines, "\n") + "\n}"
+      attrs := stmt_attrs(stmt)
+      attrs_str := emit_attrs(attrs)
+      has_derive := false
+      for a in attrs {
+        if (contains(a, "derive(")) { has_derive := true }
+      }
+      body := name + " {\n" + join(var_lines, "\n") + "\n}"
+      if (has_derive) {
+        attrs_str + "pub enum " + body
+      } else {
+        attrs_str + "#[derive(Debug, Clone, PartialEq)]\npub enum " + body
+      }
     }
     "Bind" -> {
       name := stmt_bind_name(stmt)
@@ -1031,7 +1069,8 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         void_mark := expr_lambda_void_mark(e)
         lam_stmts := expr_lambda_stmts(e)
         fe2 := expr_lambda_final(e)
-        cg_top_fn(i, name, params, ret_ty, void_mark, lam_stmts, fe2)
+        fn_str := cg_top_fn(i, name, params, ret_ty, void_mark, lam_stmts, fe2)
+        "" + emit_attrs(stmt_attrs(stmt)) + fn_str
       } else {
         ek := expr_kind(e)
         ty_str := if (ek == "Str") { "&str" } else {
@@ -1085,21 +1124,42 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
 
 codegen_program_with_resolved := (prog: @[Stmt], hom_files: HomFiles, rs_content: RsContent) -> str {
   n := len(prog)
+  // Pass 1: collect InnerAttr stmts and emit as #![..] at top
+  inner_lines := @[]
+  j := 0
+  while (j < n) {
+    s := prog[j]
+    if (stmt_kind(s) == "InnerAttr") {
+      push(inner_lines, "#![" + stmt_inner_attr_val(s) + "]")
+    }
+    j := j + 1
+  }
+  header := if (len(inner_lines) == 0) {
+    ""
+  } else {
+    join(inner_lines, "\n") + "\n"
+  }
+  // Pass 2: emit non-InnerAttr statements
   i := 0
   parts := @[]
   while (i < n) {
     s := prog[i]
     sk := stmt_kind(s)
-    skip := if (sk == "Use") {
-      path := stmt_use_path(s)
-      len(path) == 1 and hom_files_contains(hom_files, path[0])
+    skip := if (sk == "InnerAttr") {
+      true
     } else {
-      false
+      if (sk == "Use") {
+        path := stmt_use_path(s)
+        len(path) == 1 and hom_files_contains(hom_files, path[0])
+      } else {
+        false
+      }
     }
     if (not skip) {
       push(parts, codegen_top_level_stmt(0, s, rs_content))
     }
     i := i + 1
   }
-  join(parts, "\n")
+  body := join(parts, "\n")
+  "${header}${body}"
 }

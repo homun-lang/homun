@@ -18,18 +18,51 @@ use parser_imp
 parse_program := () -> @[Stmt] {
   stmts := @[]
   done := false
+  at_top := true
   while (not done) {
     k := ps_peek_kind()
     if (k == "Eof" or k == "RBrace") {
       done := true
     } else {
-      if (k == "Use") {
-        push(stmts, parse_use())
-      } else {
-        if (k == "Ident") {
-          push(stmts, parse_top_bind())
+      if (k == "At" and ps_peek_next_kind() == "Bang") {
+        if (at_top) {
+          ps_advance()
+          body := ps_collect_attr_body()
+          push(stmts, mk_stmt_inner_attr(body))
         } else {
+          ps_set_err("@! inner attribute must appear before any declarations")
           done := true
+        }
+      } else {
+        if (k == "At" and ps_peek_next_kind() == "Ident") {
+          // Collect one or more outer attrs: @ident...
+          outer_attrs := @[]
+          while (ps_check("At") and ps_peek_next_kind() == "Ident") {
+            ps_advance()
+            body := ps_collect_outer_attr_body()
+            outer_attrs := outer_attrs + @[body]
+          }
+          // Expect a decl-starter after attrs
+          k2 := ps_peek_kind()
+          if (k2 == "Ident") {
+            at_top := false
+            push(stmts, parse_top_bind_attrs(outer_attrs))
+          } else {
+            ps_set_err("attribute must precede a struct, enum, or top-level binding")
+            done := true
+          }
+        } else {
+          if (k == "Use") {
+            at_top := false
+            push(stmts, parse_use())
+          } else {
+            if (k == "Ident") {
+              at_top := false
+              push(stmts, parse_top_bind())
+            } else {
+              done := true
+            }
+          }
         }
       }
     }
@@ -75,6 +108,26 @@ parse_top_bind := () -> Stmt {
     } else {
       rhs := parse_expr()
       mk_stmt_bind(name, rhs)
+    }
+  }
+}
+
+parse_top_bind_attrs := (attrs: @[str]) -> Stmt {
+  name := ps_advance_ident()
+  ps_expect("Assign")
+  k := ps_peek_kind()
+  if (k == "Struct") {
+    ps_advance()
+    fields := parse_brace_fields()
+    mk_stmt_struct_def_attrs(name, fields, attrs)
+  } else {
+    if (k == "Enum") {
+      ps_advance()
+      variants := parse_brace_variants()
+      mk_stmt_enum_def_attrs(name, variants, attrs)
+    } else {
+      rhs := parse_expr()
+      mk_stmt_bind_attrs(name, rhs, attrs)
     }
   }
 }

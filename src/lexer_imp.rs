@@ -107,6 +107,7 @@ pub enum TokenKind {
     Semi,
     Underscore,
     At,
+    Bang,
     Question,
     // Delimiters
     LParen,
@@ -262,6 +263,7 @@ pub fn make_token(kind: String, pos: Pos) -> Token {
         "Semi" => TokenKind::Semi,
         "Underscore" => TokenKind::Underscore,
         "At" => TokenKind::At,
+        "Bang" => TokenKind::Bang,
         "Question" => TokenKind::Question,
         // Delimiters
         "LParen" => TokenKind::LParen,
@@ -491,6 +493,7 @@ pub fn ls_try_single_op(c: String) -> String {
         ";" => "Semi".to_string(),
         "_" => "Underscore".to_string(),
         "@" => "At".to_string(),
+        "!" => "Bang".to_string(),
         "?" => "Question".to_string(),
         "(" => "LParen".to_string(),
         ")" => "RParen".to_string(),

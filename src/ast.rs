@@ -10,16 +10,18 @@ pub type Program = Vec<Stmt>;
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    Bind(Name, Expr),
+    Bind(Name, Expr, Vec<String>),
     BindMut(Name, Expr),
     BindPat(Pat, Expr),
     BindPatMut(Pat, Expr),
     /// Lvalue assignment: `expr[idx] := rhs` or `expr.field := rhs`
     Assign(Expr, Expr),
     Use(Vec<Name>),
-    StructDef(Name, Vec<FieldDef>),
-    EnumDef(Name, Vec<VariantDef>),
+    StructDef(Name, Vec<FieldDef>, Vec<String>),
+    EnumDef(Name, Vec<VariantDef>, Vec<String>),
     Expression(Expr),
+    /// File-top `@!` inner attribute
+    InnerAttr(String),
 }
 
 #[derive(Debug, Clone)]
