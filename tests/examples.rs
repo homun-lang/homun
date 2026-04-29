@@ -139,6 +139,102 @@ fn test_example_attr_cfg() {
 }
 
 #[test]
+fn test_example_enum_multi_payload() {
+    let out = compile_and_run(Path::new("_site/examples/enum_multi_payload.hom"));
+    assert!(
+        out.contains("sum=42"),
+        "enum_multi_payload should print sum=42, got: {}",
+        out
+    );
+}
+
+#[test]
+fn test_example_match_or_pat() {
+    let out = compile_and_run(Path::new("_site/examples/match_or_pat.hom"));
+    assert!(
+        out.contains("true")
+            && out.contains("false")
+            && out.contains("vertical")
+            && out.contains("horizontal"),
+        "match_or_pat should print true/false/vertical/horizontal, got: {}",
+        out
+    );
+}
+
+#[test]
+fn test_example_derive_enum() {
+    let out = compile_and_run(Path::new("_site/examples/derive_enum.hom"));
+    assert!(
+        out.contains("num=5"),
+        "derive_enum should print num=5, got: {}",
+        out
+    );
+}
+
+#[test]
+fn test_example_thread_local_state() {
+    let out = compile_and_run(Path::new("_site/examples/thread_local_state.hom"));
+    assert!(
+        out.contains("steps=3") && out.contains("msg=hello"),
+        "thread_local_state should print steps=3 msg=hello, got: {}",
+        out
+    );
+}
+
+#[test]
+fn test_example_test_path_fs() {
+    let out = compile_and_run(Path::new("_site/examples/test_path_fs.hom"));
+    assert!(
+        out.contains("joined=a/b.txt"),
+        "test_path_fs: expected joined=a/b.txt, got: {}",
+        out
+    );
+    assert!(
+        out.contains("parent=a/b"),
+        "test_path_fs: expected parent=a/b, got: {}",
+        out
+    );
+    assert!(
+        out.contains("stripped=q/r"),
+        "test_path_fs: expected stripped=q/r, got: {}",
+        out
+    );
+    assert!(
+        out.contains("write=ok"),
+        "test_path_fs: expected write=ok, got: {}",
+        out
+    );
+    assert!(
+        out.contains("content=hello_from_fs"),
+        "test_path_fs: expected content=hello_from_fs, got: {}",
+        out
+    );
+    assert!(
+        out.contains("found=true"),
+        "test_path_fs: expected found=true, got: {}",
+        out
+    );
+    assert!(
+        out.contains("is_dir=true"),
+        "test_path_fs: expected is_dir=true, got: {}",
+        out
+    );
+}
+
+#[test]
+fn test_example_explicit_generics() {
+    let out = compile_and_run(Path::new("_site/examples/explicit_generics.hom"));
+    assert!(
+        out.contains("n=7")
+            && out.contains("t=hello")
+            && out.contains("r=99")
+            && out.contains("w=42"),
+        "explicit_generics should print n=7 t=hello r=99 w=42, got: {}",
+        out
+    );
+}
+
+#[test]
 fn test_example_struct_destruct() {
     let out = compile_and_run(Path::new("_site/examples/struct_destruct.hom"));
     assert!(

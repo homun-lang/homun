@@ -1,0 +1,19 @@
+// enum_multi_payload.hom — multi-payload enum variants + match destructure
+use std
+
+// Positional multi-payload variants
+Coord := enum {
+  Origin,
+  Two(int, int),
+  Three(int, int, int),
+}
+
+main := () -> _ {
+  p := Coord.Two(10, 32)
+  sum := match p {
+    Coord.Two(a, b) -> a + b
+    Coord.Three(a, b, c) -> a + b + c
+    Coord.Origin -> 0
+  }
+  print("sum=${sum}")
+}

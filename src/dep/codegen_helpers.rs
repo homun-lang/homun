@@ -344,6 +344,60 @@ pub fn is_homun_macro(name: String) -> bool {
     HOMUN_MACROS.contains(&name.as_str())
 }
 
+// ─── Self-recursive type registry ───────────────────────────────────────────
+
+thread_local! {
+    static SELF_RECURSIVE_TYPES: RefCell<std::collections::HashSet<String>> =
+        RefCell::new(std::collections::HashSet::new());
+}
+
+/// Mark `name` as a self-recursive type for the duration of its variant emission.
+pub fn register_recursive_type(name: String) {
+    SELF_RECURSIVE_TYPES.with(|s| s.borrow_mut().insert(name));
+}
+
+/// Clear the self-recursive type registry after variant emission is done.
+pub fn clear_recursive_types() {
+    SELF_RECURSIVE_TYPES.with(|s| s.borrow_mut().clear());
+}
+
+/// Like `codegen_type` but wraps self-recursive names in `Box<...>`.
+/// Use this when emitting enum variant field types.
+pub fn codegen_type_variant_field(ty: TypeExpr) -> String {
+    let should_box = if let TypeExpr::Name(ref n) = ty {
+        SELF_RECURSIVE_TYPES.with(|s| s.borrow().contains(n.as_str()))
+    } else {
+        false
+    };
+    if should_box {
+        format!("Box<{}>", codegen_type(ty))
+    } else {
+        codegen_type(ty)
+    }
+}
+
+// ─── Thread-local variable registry ─────────────────────────────────────────
+
+thread_local! {
+    static THREAD_LOCAL_VARS: RefCell<std::collections::HashSet<String>> =
+        RefCell::new(std::collections::HashSet::new());
+}
+
+/// Register `name` as a @thread_local binding.
+pub fn register_thread_local_var(name: String) {
+    THREAD_LOCAL_VARS.with(|s| s.borrow_mut().insert(name));
+}
+
+/// Returns true if `name` was declared as a @thread_local binding.
+pub fn is_thread_local_var(name: String) -> bool {
+    THREAD_LOCAL_VARS.with(|s| s.borrow().contains(&name))
+}
+
+/// Clear the thread-local variable registry (call at start of each compilation).
+pub fn clear_thread_local_vars() {
+    THREAD_LOCAL_VARS.with(|s| s.borrow_mut().clear());
+}
+
 // ─── Preamble helpers ────────────────────────────────────────────────────────
 
 /// Standard derive attributes for Homun-generated structs and enums.

@@ -114,6 +114,12 @@ parse_top_bind := () -> Stmt {
 
 parse_top_bind_attrs := (attrs: @[str]) -> Stmt {
   name := ps_advance_ident()
+  // @thread_local name ::= expr  →  Stmt::ThreadLocal
+  if ("thread_local" in attrs) {
+    ps_expect("MutAssign")
+    rhs := parse_expr()
+    => mk_stmt_thread_local(name, rhs)
+  }
   ps_expect("Assign")
   k := ps_peek_kind()
   if (k == "Struct") {
@@ -169,16 +175,48 @@ parse_brace_variants := () -> @[VariantDef] {
       if (k == "Ident") {
         name := ps_peek_ident()
         ps_advance()
-        payload := if (ps_check("LParen")) {
+        if (ps_check("LParen")) {
           ps_advance()
-          ty := parse_type_expr()
-          ps_expect("RParen")
-          some_type(ty)
+          // Named fields: Variant(field: Type, ...) — ident followed by colon
+          is_named := ps_peek_kind() == "Ident" and ps_peek_next_kind() == "Colon"
+          if (is_named) {
+            fnames := @[]
+            ftys := @[]
+            fname := ps_advance_ident()
+            ps_expect("Colon")
+            fty := parse_type_expr()
+            push(fnames, fname)
+            push(ftys, fty)
+            while (ps_consume("Comma")) {
+              if (ps_check("RParen")) { break }
+              fname2 := ps_advance_ident()
+              ps_expect("Colon")
+              fty2 := parse_type_expr()
+              push(fnames, fname2)
+              push(ftys, fty2)
+            }
+            ps_expect("RParen")
+            ps_consume("Comma")
+            push(variants, mk_variantdef_multi(name, fnames, ftys))
+          } else {
+            // Positional fields (single or multi)
+            all_tys := @[parse_type_expr()]
+            while (ps_consume("Comma")) {
+              if (ps_check("RParen")) { break }
+              push(all_tys, parse_type_expr())
+            }
+            ps_expect("RParen")
+            ps_consume("Comma")
+            if (len(all_tys) == 1) {
+              push(variants, mk_variantdef(name, some_type(all_tys[0])))
+            } else {
+              push(variants, mk_variantdef_positional(name, all_tys))
+            }
+          }
         } else {
-          none_type()
+          ps_consume("Comma")
+          push(variants, mk_variantdef(name, none_type()))
         }
-        ps_consume("Comma")
-        push(variants, mk_variantdef(name, payload))
       } else {
         done := true
       }
@@ -654,6 +692,9 @@ parse_atom := () -> Expr {
   if (k == "LBrace") {
     => parse_inline_block()
   }
+  if (k == "Lt") {
+    => parse_generic_lambda()
+  }
   if (k == "Underscore") {
     ps_advance()
     => mk_expr_var("_")
@@ -911,7 +952,18 @@ parse_match_expr := () -> Expr {
 }
 
 parse_match_arm := () -> MatchArm {
-  pat := parse_pat()
+  first_pat := parse_pat()
+  // Or-pattern: collect alternatives separated by | (Pipe token)
+  pat := if (ps_check("Pipe")) {
+    pats := @[first_pat]
+    while (ps_check("Pipe")) {
+      ps_advance()
+      push(pats, parse_pat())
+    }
+    mk_pat_or(pats)
+  } else {
+    first_pat
+  }
   guard := if (ps_check("If")) {
     ps_advance()
     some_expr(parse_expr())
@@ -951,17 +1003,39 @@ parse_pat := () -> Pat {
       full := "${name}.${vname}"
       if (ps_check("LParen")) {
         ps_advance()
-        p := parse_pat()
+        if (ps_check("RParen")) {
+          ps_advance()
+          => mk_pat_enum(full, none_pat())
+        }
+        epats := @[parse_pat()]
+        while (ps_consume("Comma")) {
+          if (ps_check("RParen")) { break }
+          push(epats, parse_pat())
+        }
         ps_expect("RParen")
-        => mk_pat_enum(full, some_pat(p))
+        if (len(epats) == 1) {
+          => mk_pat_enum(full, some_pat(epats[0]))
+        }
+        => mk_pat_enum_multi(full, epats)
       }
       => mk_pat_enum(full, none_pat())
     }
     if (ps_check("LParen") and ps_same_line()) {
       ps_advance()
-      p := parse_pat()
+      if (ps_check("RParen")) {
+        ps_advance()
+        => mk_pat_enum(name, none_pat())
+      }
+      epats := @[parse_pat()]
+      while (ps_consume("Comma")) {
+        if (ps_check("RParen")) { break }
+        push(epats, parse_pat())
+      }
       ps_expect("RParen")
-      => mk_pat_enum(name, some_pat(p))
+      if (len(epats) == 1) {
+        => mk_pat_enum(name, some_pat(epats[0]))
+      }
+      => mk_pat_enum_multi(name, epats)
     }
     => mk_pat_var(name)
   }
@@ -1124,4 +1198,70 @@ parse_type_expr := () -> TypeExpr {
     => mk_type_name(name)
   }
   mk_type_infer()
+}
+
+// ─── Generic lambda ──────────────────────────────────────────────────────────
+// Parses `<T: Trait + Trait, U>(params) -> ret { body }`
+
+parse_generic_lambda := () -> Expr {
+  ps_expect("Lt")
+  generics := parse_generic_param_list()
+  ps_expect("Gt")
+  ps_expect("LParen")
+  params := parse_param_list()
+  ps_expect("RParen")
+  if (not ps_check("Arrow")) {
+    ps_set_err("expected -> after generic lambda params")
+    => mk_expr_none()
+  }
+  ps_advance()
+  rk := ps_peek_kind()
+  ret_ty := if (rk == "LBrace") {
+    none_type()
+  } else {
+    if (rk == "Underscore") {
+      ps_advance()
+      none_type()
+    } else {
+      some_type(parse_type_expr())
+    }
+  }
+  void_mark := if (rk == "Underscore") { some_type(mk_type_void()) } else { none_type() }
+  stmts := parse_block_stmts_braced()
+  ss, fe := split_block(stmts)
+  mk_expr_lambda_generics(generics, params, ret_ty, void_mark, ss, fe)
+}
+
+parse_generic_param_list := () -> @[str] {
+  result := @[]
+  name := ps_advance_ident()
+  g_str := if (ps_consume("Colon")) {
+    first_bound := ps_advance_ident()
+    bounds := @[first_bound]
+    while (ps_check("Plus")) {
+      ps_advance()
+      push(bounds, ps_advance_ident())
+    }
+    name + ": " + join(bounds, " + ")
+  } else {
+    name
+  }
+  push(result, g_str)
+  while (ps_consume("Comma")) {
+    if (ps_check("Gt")) { break }
+    name2 := ps_advance_ident()
+    g_str2 := if (ps_consume("Colon")) {
+      b1 := ps_advance_ident()
+      bounds2 := @[b1]
+      while (ps_check("Plus")) {
+        ps_advance()
+        push(bounds2, ps_advance_ident())
+      }
+      name2 + ": " + join(bounds2, " + ")
+    } else {
+      name2
+    }
+    push(result, g_str2)
+  }
+  result
 }

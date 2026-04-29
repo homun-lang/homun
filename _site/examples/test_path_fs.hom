@@ -1,0 +1,39 @@
+// test_path_fs.hom — Integration test for embedded path + fs modules.
+//
+// Exercises: path_join, path_parent, path_strip_prefix, fs_write,
+//            fs_read, fs_exists, fs_is_dir.
+//
+// Compile + run:
+//   homunc _site/examples/test_path_fs.hom -o .tmp/test_path_fs.rs
+//   rustc .tmp/test_path_fs.rs -o .tmp/test_path_fs && .tmp/test_path_fs
+
+use path
+use fs
+use std
+
+main := () -> _ {
+  // path module
+  joined   := path_join("a", "b.txt")
+  parent   := path_parent("a/b/c.txt")
+  stripped := path_strip_prefix("p/q/r", "p")
+  print("joined=${joined}")
+  print("parent=${parent}")
+  print("stripped=${stripped}")
+
+  // fs module — write then read
+  p := ".tmp/homun_path_fs_test.txt"
+  match fs_write(p, "hello_from_fs") {
+    Ok(_)  -> { print("write=ok") }
+    Err(e) -> { print("write_err=${e}") }
+  }
+  match fs_read(p) {
+    Ok(content) -> { print("content=${content}") }
+    Err(e)      -> { print("read_err=${e}") }
+  }
+
+  // fs bool helpers
+  found  := fs_exists(p)
+  is_dir := fs_is_dir("src")
+  print("found=${found}")
+  print("is_dir=${is_dir}")
+}

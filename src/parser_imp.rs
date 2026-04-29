@@ -372,6 +372,9 @@ pub fn mk_stmt_expression(expr: Expr) -> Stmt {
 pub fn mk_stmt_inner_attr(body: String) -> Stmt {
     Stmt::InnerAttr(body)
 }
+pub fn mk_stmt_thread_local(name: String, expr: Expr) -> Stmt {
+    Stmt::ThreadLocal(name, expr)
+}
 
 // ─── AST constructors: Expr ─────────────────────────────────────────────────
 
@@ -447,6 +450,25 @@ pub fn mk_expr_lambda(
     final_expr: Expr,
 ) -> Expr {
     Expr::Lambda {
+        generics: vec![],
+        params,
+        ret_ty,
+        void_mark,
+        stmts,
+        final_expr: Box::new(final_expr),
+    }
+}
+
+pub fn mk_expr_lambda_generics(
+    generics: Vec<String>,
+    params: Vec<Param>,
+    ret_ty: Option<TypeExpr>,
+    void_mark: Option<TypeExpr>,
+    stmts: Vec<Stmt>,
+    final_expr: Expr,
+) -> Expr {
+    Expr::Lambda {
+        generics,
         params,
         ret_ty,
         void_mark,
@@ -505,10 +527,19 @@ pub fn mk_pat_tuple(pats: Vec<Pat>) -> Pat {
     Pat::Tuple(pats)
 }
 pub fn mk_pat_enum(name: String, payload: Option<Pat>) -> Pat {
-    Pat::Enum(name, payload.map(Box::new))
+    match payload {
+        None => Pat::Enum(name, vec![]),
+        Some(p) => Pat::Enum(name, vec![p]),
+    }
+}
+pub fn mk_pat_enum_multi(name: String, pats: Vec<Pat>) -> Pat {
+    Pat::Enum(name, pats)
 }
 pub fn mk_pat_none() -> Pat {
     Pat::None
+}
+pub fn mk_pat_or(pats: Vec<Pat>) -> Pat {
+    Pat::Or(pats)
 }
 
 // ─── AST constructors: TypeExpr ─────────────────────────────────────────────
@@ -563,7 +594,28 @@ pub fn mk_fielddef(name: String, ty: Option<TypeExpr>) -> FieldDef {
 }
 
 pub fn mk_variantdef(name: String, payload: Option<TypeExpr>) -> VariantDef {
-    VariantDef { name, payload }
+    VariantDef {
+        name,
+        fields: match payload {
+            None => vec![],
+            Some(ty) => vec![(None, ty)],
+        },
+    }
+}
+pub fn mk_variantdef_multi(name: String, fnames: Vec<String>, ftys: Vec<TypeExpr>) -> VariantDef {
+    let fields = fnames
+        .into_iter()
+        .zip(ftys)
+        .map(|(n, ty)| {
+            let opt_name = if n.is_empty() { None } else { Some(n) };
+            (opt_name, ty)
+        })
+        .collect();
+    VariantDef { name, fields }
+}
+pub fn mk_variantdef_positional(name: String, ftys: Vec<TypeExpr>) -> VariantDef {
+    let fields = ftys.into_iter().map(|ty| (None, ty)).collect();
+    VariantDef { name, fields }
 }
 
 // ─── Option helpers ─────────────────────────────────────────────────────────

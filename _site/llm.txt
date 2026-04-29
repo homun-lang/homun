@@ -165,12 +165,13 @@ use graph                       // import graph.rs or graph.hom
 ```
 
 `use foo` checks four candidates (relative to calling file's directory):
-`foo.hom`, `foo.rs`, `foo/mod.hom`, `foo/mod.rs`.
+`foo/mod.hom`, `foo.hom`, `foo/mod.rs`, `foo.rs`.
 Exactly one may exist — 2+ is a compile error. 0 matches → passes through as Rust `use foo;`
 
-Runtime libs (`heap`, `re`, `chars`, `str_ext`, `dict`) live in `Homun-Lang/runtime/`.
-To use them in a project, either: (a) place the .hom test files in the same runtime/ dir,
-or (b) copy/symlink the .rs files into the project's source directory.
+Runtime libs (`std`, `heap`, `re`, `chars`, `str_ext`, `dict`) are embedded in the `homunc`
+binary — `use heap` etc. just works for single-file compiles. For multi-module Cargo
+projects, run `homunc --emit-runtime > src/runtime.rs` to extract the embedded runtime,
+then compile each module with `homunc --module file.hom -o out.rs`.
 
 ### Error Handling (Result + ?)
 ```hom

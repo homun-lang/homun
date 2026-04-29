@@ -6,6 +6,17 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.82 — 2026-04-29 — Explicit generics syntax `<T: Trait>`
+
+- Added `<T: Trait + Trait, U: Trait>(params) -> ret { body }` lambda syntax for explicit generic constraints
+- Parser: `parse_atom` handles `Lt` token to enter `parse_generic_lambda`; `parse_generic_param_list` builds pre-rendered constraint strings (e.g. `"T: Hash + Eq"`)
+- AST: `Expr::Lambda` gains `generics: Vec<Name>` field (pre-rendered constraint strings; empty = implicit inference as before)
+- Codegen: `cg_top_fn` uses explicit generics when provided, falls back to `infer_generics` for untyped params otherwise
+- Sema: mixing explicit `<T:...>` with implicit untyped params in the same fn is now a compile error
+- Existing untyped-params → `<T: Clone>` inference unchanged
+
+---
+
 ### v0.81 — 2026-04-27 — `@attr` syntax for Rust attribute passthrough
 
 - Added `@<content>` outer attribute → emits Rust `#[<content>]` above the next struct, enum, or top-level fn binding

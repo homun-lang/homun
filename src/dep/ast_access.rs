@@ -22,6 +22,7 @@ pub fn stmt_kind(s: Stmt) -> String {
         Stmt::EnumDef(_, _, _) => "EnumDef".to_string(),
         Stmt::Expression(_) => "Expression".to_string(),
         Stmt::InnerAttr(_) => "InnerAttr".to_string(),
+        Stmt::ThreadLocal(_, _) => "ThreadLocal".to_string(),
     }
 }
 
@@ -70,6 +71,7 @@ pub fn pat_kind(p: Pat) -> String {
         Pat::Tuple(_) => "Tuple".to_string(),
         Pat::Enum(_, _) => "Enum".to_string(),
         Pat::None => "None".to_string(),
+        Pat::Or(_) => "Or".to_string(),
     }
 }
 
@@ -82,7 +84,8 @@ pub fn stmt_bind_name(s: Stmt) -> String {
         Stmt::BindMut(n, _) => n,
         Stmt::StructDef(n, _, _) => n,
         Stmt::EnumDef(n, _, _) => n,
-        _ => panic!("stmt_bind_name: not Bind/BindMut/StructDef/EnumDef"),
+        Stmt::ThreadLocal(n, _) => n,
+        _ => panic!("stmt_bind_name: not Bind/BindMut/StructDef/EnumDef/ThreadLocal"),
     }
 }
 
@@ -596,10 +599,19 @@ pub fn pat_enum_name(p: Pat) -> String {
     }
 }
 
-/// Returns the optional payload pattern from Pat::Enum.
+/// Returns the pattern list from Pat::Enum.
+pub fn pat_enum_pats(p: Pat) -> Vec<Pat> {
+    match p {
+        Pat::Enum(_, pats) => pats,
+        _ => panic!("pat_enum_pats: not Enum"),
+    }
+}
+
+/// Compat shim: returns the single payload if exactly one positional pattern; else None.
 pub fn pat_enum_payload(p: Pat) -> Option<Pat> {
     match p {
-        Pat::Enum(_, payload) => payload.map(|x| *x),
+        Pat::Enum(_, mut pats) if pats.len() == 1 => Some(pats.remove(0)),
+        Pat::Enum(_, _) => None,
         _ => panic!("pat_enum_payload: not Enum"),
     }
 }
@@ -609,6 +621,14 @@ pub fn pat_lit_expr(p: Pat) -> Expr {
     match p {
         Pat::Lit(e) => e,
         _ => panic!("pat_lit_expr: not Lit"),
+    }
+}
+
+/// Returns the alternative patterns from Pat::Or.
+pub fn pat_or_pats(p: Pat) -> Vec<Pat> {
+    match p {
+        Pat::Or(pats) => pats,
+        _ => panic!("pat_or_pats: not Or"),
     }
 }
 
@@ -711,6 +731,14 @@ pub fn expr_lambda_void_mark(e: Expr) -> Option<TypeExpr> {
     }
 }
 
+/// Returns the explicit generic constraint strings from Expr::Lambda (empty = use implicit inference).
+pub fn expr_lambda_generics(e: Expr) -> Vec<String> {
+    match e {
+        Expr::Lambda { generics, .. } => generics,
+        _ => panic!("expr_lambda_generics: not Lambda"),
+    }
+}
+
 // ─── Range accessors (Phase 2 / codegen) ─────────────────────────────────────
 
 /// Returns the optional start bound from Expr::Range.
@@ -791,6 +819,22 @@ pub fn stmt_inner_attr_val(s: Stmt) -> String {
     }
 }
 
+/// Returns the name from Stmt::ThreadLocal.
+pub fn stmt_thread_local_name(s: Stmt) -> String {
+    match s {
+        Stmt::ThreadLocal(n, _) => n,
+        _ => panic!("stmt_thread_local_name: not ThreadLocal"),
+    }
+}
+
+/// Returns the init expression from Stmt::ThreadLocal.
+pub fn stmt_thread_local_expr(s: Stmt) -> Expr {
+    match s {
+        Stmt::ThreadLocal(_, e) => e,
+        _ => panic!("stmt_thread_local_expr: not ThreadLocal"),
+    }
+}
+
 // ─── FieldDef accessors (Phase 2 / codegen) ──────────────────────────────────
 
 /// Returns the field name from a FieldDef.
@@ -810,9 +854,24 @@ pub fn variantdef_name(v: VariantDef) -> String {
     v.name
 }
 
-/// Returns the optional payload type from a VariantDef.
+/// Returns all (optional-name, type) field pairs from a VariantDef.
+pub fn variantdef_fields(v: VariantDef) -> Vec<(Option<String>, TypeExpr)> {
+    v.fields
+}
+
+/// True if any field in the variant has a name (struct-style variant).
+pub fn variantdef_fields_any_named(v: VariantDef) -> bool {
+    v.fields.iter().any(|(n, _)| n.is_some())
+}
+
+/// Compat shim: returns the single positional type if the variant has exactly one
+/// unnamed field, otherwise None.
 pub fn variantdef_payload(v: VariantDef) -> Option<TypeExpr> {
-    v.payload
+    if v.fields.len() == 1 && v.fields[0].0.is_none() {
+        Some(v.fields[0].1.clone())
+    } else {
+        None
+    }
 }
 
 // ─── TypeExpr accessors (Phase 2 / codegen) ──────────────────────────────────

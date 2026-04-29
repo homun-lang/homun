@@ -35,9 +35,13 @@ Importing `_imp.rs` sets `has_rs_dep=true` in homunc's sema checker, disabling
 undefined-reference warnings for `dep/` functions and runtime functions that are
 available at `include!()` time but unknown to homunc's static checker.
 
-Current self-hosted modules:
-- `codegen.hom` + `codegen_imp.rs`
-- `sema.hom` + `sema_imp.rs`
+Current self-hosted modules (all of `src/*.hom` + their `_imp.rs` partners):
+- `main.hom`     + `main_imp.rs`
+- `lexer.hom`    + `lexer_imp.rs`
+- `parser.hom`   + `parser_imp.rs`
+- `resolver.hom` + `resolver_imp.rs`
+- `sema.hom`     + `sema_imp.rs`
+- `codegen.hom`  + `codegen_imp.rs`
 
 ## Work Cycle
 
@@ -141,5 +145,5 @@ See `.claude/skills/claude-bot/` for the full skill, example scripts, and planni
 
 ## TODO
 
-1. Use `::` (mutable params) to replace `Rc<RefCell<>>` patterns — dep/ functions need `::` support or use functional return-value pattern
-2. Move more `.rs` logic into `.hom` — expand self-hosted modules (lexer.hom, resolver.hom)
+1. `hom-std/heap.rs` still uses `Rc<RefCell<BinaryHeap<...>>>` so the runtime can hand out shared `&mut Heap` borrows under Homun's clone-everything codegen. Compiler internals are already `Rc<RefCell<>>`-free (v0.75 + `::` params). Decide whether to keep this runtime trick or replace with a different ownership story.
+2. Shrink the `_imp.rs` files further — most of `lexer_imp.rs` (605 lines) and `parser_imp.rs` (978 lines) is type defs + thread-local state + Rust-only helpers, but more dispatch logic could move into `.hom`.

@@ -129,6 +129,14 @@ mod hom_tests {
         include!("../hom-std/dict.rs");
         include!("../tests/std-tests/test_dict.rs");
     }
+
+    mod path_mod {
+        include!("../hom-std/path.rs");
+    }
+
+    mod fs_mod {
+        include!("../hom-std/fs.rs");
+    }
 }
 
 // ── Embedded runtime library content ─────────────────────────────────────────
@@ -164,6 +172,8 @@ pub fn embedded_rs(name: &str) -> Option<String> {
         "chars" => Some(include_str!("../hom-std/chars.rs").to_string()),
         "str_ext" => Some(include_str!("../hom-std/str_ext.rs").to_string()),
         "dict" => Some(include_str!("../hom-std/dict.rs").to_string()),
+        "path" => Some(include_str!("../hom-std/path.rs").to_string()),
+        "fs" => Some(include_str!("../hom-std/fs.rs").to_string()),
         _ => None,
     }
 }

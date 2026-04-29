@@ -37,6 +37,14 @@ pat_names := (pat: Pat) -> @[str] {
       }
       names
     }
+    "Or" -> {
+      or_pats := pat_or_pats(pat)
+      if (len(or_pats) == 0) {
+        errs_empty()
+      } else {
+        pat_names(or_pats[0])
+      }
+    }
     _ -> errs_empty()
   }
 }
@@ -61,12 +69,18 @@ extend_with_pat := (env: Scope, pat: Pat) -> Scope {
     }
   }
   if (k == "Enum") {
-    payload := pat_enum_payload(pat)
-    match payload {
-      none -> {}
-      Some(inner_pat) -> {
-        result := extend_with_pat(result, inner_pat)
-      }
+    epats := pat_enum_pats(pat)
+    n := len(epats)
+    i := 0
+    while (i < n) {
+      result := extend_with_pat(result, epats[i])
+      i := i + 1
+    }
+  }
+  if (k == "Or") {
+    or_pats := pat_or_pats(pat)
+    if (len(or_pats) > 0) {
+      result := extend_with_pat(result, or_pats[0])
     }
   }
   result
@@ -84,7 +98,7 @@ stmts_bound := (env: Scope, stmts: @[Stmt]) -> Scope {
   while (i < n) {
     s := stmts[i]
     k := stmt_kind(s)
-    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef") {
+    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef" or k == "ThreadLocal") {
       result := scope_insert(result, stmt_bind_name(s))
     }
     if (k == "BindPat" or k == "BindPatMut") {
@@ -118,7 +132,7 @@ check_stmts := (env: Scope, stmts: @[Stmt]) -> @[str] {
     s := stmts[i]
     errs := errs_join(errs, check_stmt(local_env, s))
     k := stmt_kind(s)
-    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef") {
+    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef" or k == "ThreadLocal") {
       local_env := scope_insert(local_env, stmt_bind_name(s))
     }
     if (k == "BindPat" or k == "BindPatMut") {
@@ -151,6 +165,14 @@ check_stmt := (env: Scope, stmt: Stmt) -> @[str] {
     "BindPat" -> check_expr(env, stmt_bindpat_expr(stmt))
     "BindPatMut" -> check_expr(env, stmt_bindpat_mut_expr(stmt))
     "Assign" -> errs_join(check_expr(env, stmt_assign_lhs(stmt)), check_expr(env, stmt_assign_rhs(stmt)))
+    "ThreadLocal" -> {
+      init := stmt_thread_local_expr(stmt)
+      if (expr_kind(init) == "Lambda") {
+        errs_one("SEMA ERROR: @thread_local binding '${stmt_thread_local_name(stmt)}' cannot be a lambda")
+      } else {
+        check_expr(env, init)
+      }
+    }
     _ -> errs_empty()
   }
 }
@@ -331,9 +353,30 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
     }
     "EarlyReturn" -> check_expr(env, expr_earlyreturn_val(expr))
     "Lambda" -> {
-      params     := expr_lambda_params(expr)
-      lam_stmts  := expr_lambda_stmts(expr)
-      fe         := expr_lambda_final(expr)
+      params       := expr_lambda_params(expr)
+      lam_stmts    := expr_lambda_stmts(expr)
+      fe           := expr_lambda_final(expr)
+      explicit_gen := expr_lambda_generics(expr)
+      // Check: explicit generics + untyped params in same fn is an error
+      mixing_errs := if (len(explicit_gen) > 0) {
+        has_untyped := false
+        pi2 := 0
+        pn2 := len(params)
+        while (pi2 < pn2) {
+          p := params[pi2]
+          if (param_name(p) != "_") {
+            if (param_ty(p).is_none()) { has_untyped := true }
+          }
+          pi2 := pi2 + 1
+        }
+        if (has_untyped) {
+          errs_one("SEMA ERROR: cannot mix explicit <T:...> generics with implicit untyped params in same function")
+        } else {
+          errs_empty()
+        }
+      } else {
+        errs_empty()
+      }
       env2       := scope_clone(env)
       pn := len(params)
       pi := 0
@@ -343,7 +386,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       lam_errs  := check_stmts(env2, lam_stmts)
       env_final := stmts_bound(env2, lam_stmts)
-      errs_join(lam_errs, check_expr(env_final, fe))
+      errs_join(mixing_errs, errs_join(lam_errs, check_expr(env_final, fe)))
     }
     "LoadRon" -> check_expr(env, expr_loadron_path(expr))
     "SaveRon" -> errs_join(check_expr(env, expr_saveron_data(expr)), check_expr(env, expr_saveron_path(expr)))
@@ -359,6 +402,28 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
 
 check_arm := (env: Scope, arm: MatchArm) -> @[str] {
   p       := arm_pat(arm)
+  // Validate or-pattern: all alternatives must bind the same names
+  or_errs := if (pat_kind(p) == "Or") {
+    or_pats := pat_or_pats(p)
+    n_or := len(or_pats)
+    all_ok := true
+    ref_str := join(pat_names(or_pats[0]), ",")
+    ki := 1
+    while (ki < n_or) {
+      alt_str := join(pat_names(or_pats[ki]), ",")
+      if (ref_str != alt_str) {
+        all_ok := false
+      }
+      ki := ki + 1
+    }
+    if (not all_ok) {
+      errs_one("SEMA ERROR: or-pattern alternatives must bind the same names")
+    } else {
+      errs_empty()
+    }
+  } else {
+    errs_empty()
+  }
   env2    := extend_with_pat(env, p)
   g_opt   := arm_guard(arm)
   body    := arm_body(arm)
@@ -366,7 +431,7 @@ check_arm := (env: Scope, arm: MatchArm) -> @[str] {
     none -> errs_empty()
     Some(g) -> check_expr(env2, g)
   }
-  errs_join(g_errs, check_expr(env2, body))
+  errs_join(or_errs, errs_join(g_errs, check_expr(env2, body)))
 }
 
 
@@ -384,7 +449,7 @@ run_sema := (prog: @[Stmt], imported_list: @[str], skip_undef: bool) -> @[str] {
   while (pi < pn) {
     s := prog[pi]
     k := stmt_kind(s)
-    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef") {
+    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef" or k == "ThreadLocal") {
       top_names := scope_insert(top_names, stmt_bind_name(s))
     }
     pi := pi + 1

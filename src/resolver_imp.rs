@@ -10,7 +10,7 @@
 //
 // Types:
 //   Found         — result of find_dep() with constructors and accessors
-//   ResolverState — mutable DFS state wrapped in Rc<RefCell<>>
+//   ResolverState — plain struct passed by `::` (&mut) from resolver.hom
 //
 // Color is represented as String in .hom: "White" | "Gray" | "Black".
 //

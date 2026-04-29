@@ -118,11 +118,34 @@ cg_pat := (p: Pat) -> str {
     "Enum" -> {
       name := pat_enum_name(p)
       name2 := replace(name, ".", "::")
-      payload := pat_enum_payload(p)
-      match payload {
-        none -> name2
-        Some(inner) -> name2 + "(" + cg_pat(inner) + ")"
+      epats := pat_enum_pats(p)
+      n := len(epats)
+      if (n == 0) {
+        name2
+      } else {
+        if (n == 1) {
+          name2 + "(" + cg_pat(epats[0]) + ")"
+        } else {
+          parts := @[]
+          pi := 0
+          while (pi < n) {
+            push(parts, cg_pat(epats[pi]))
+            pi := pi + 1
+          }
+          name2 + "(" + join(parts, ", ") + ")"
+        }
       }
+    }
+    "Or" -> {
+      or_pats := pat_or_pats(p)
+      n := len(or_pats)
+      parts := @[]
+      i := 0
+      while (i < n) {
+        push(parts, cg_pat(or_pats[i]))
+        i := i + 1
+      }
+      join(parts, " | ")
     }
     _ -> "_"
   }
@@ -248,8 +271,33 @@ cg_print := (i: int, sc: Scope, args: @[Expr]) -> str {
 }
 
 
+// ─── pat_has_str_lit ──────────────────────────────────────────────────────────
+// True if pat is (or contains via Or) a string literal.
+
+pat_has_str_lit := (p: Pat) -> bool {
+  k := pat_kind(p)
+  if (k == "Lit") {
+    expr_kind(pat_lit_expr(p)) == "Str"
+  } else {
+    if (k == "Or") {
+      or_pats := pat_or_pats(p)
+      n := len(or_pats)
+      found := false
+      i := 0
+      while (i < n) {
+        if (pat_has_str_lit(or_pats[i])) { found := true }
+        i := i + 1
+      }
+      found
+    } else {
+      false
+    }
+  }
+}
+
+
 // ─── has_str_pat_in_arms ──────────────────────────────────────────────────────
-// True if any arm has a string literal pattern.
+// True if any arm has a string literal pattern (including inside Or patterns).
 
 has_str_pat_in_arms := (arms: @[MatchArm]) -> bool {
   n := len(arms)
@@ -257,7 +305,7 @@ has_str_pat_in_arms := (arms: @[MatchArm]) -> bool {
   found := false
   while (i < n) {
     p := arm_pat(arms[i])
-    if (pat_kind(p) == "Lit" and expr_kind(pat_lit_expr(p)) == "Str") {
+    if (pat_has_str_lit(p)) {
       found := true
     }
     i := i + 1
@@ -314,7 +362,11 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       if (n == "_") {
         "_"
       } else {
-        if (n == "str") { "str_of" } else { n }
+        if (n == "str") { "str_of" }
+        else {
+          if (is_thread_local_var(n)) { n + "_get()" }
+          else { n }
+        }
       }
     }
     "Field" -> {
@@ -675,6 +727,11 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
     "Bind" -> {
       name := stmt_bind_name(stmt)
       e := stmt_bind_expr(stmt)
+      // Thread-local set: name := rhs  →  name_set(rhs);
+      if (is_thread_local_var(name)) {
+        rhs_s := cg_expr(i, sc, e)
+        => "${ind(i)}${name}_set(${rhs_s});"
+      }
       if (expr_kind(e) == "Lambda") {
         // Inline lambda: let name = |params| { body };
         params := expr_lambda_params(e)
@@ -725,6 +782,11 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
     "BindMut" -> {
       name := stmt_bind_mut_name(stmt)
       e := stmt_bind_mut_expr(stmt)
+      // Thread-local set: name ::= rhs  →  name_set(rhs);
+      if (is_thread_local_var(name)) {
+        rhs_s := cg_expr(i, sc, e)
+        => "${ind(i)}${name}_set(${rhs_s});"
+      }
       if (expr_kind(e) == "Lambda") {
         // Inline lambda: let name = |params| { body };
         params := expr_lambda_params(e)
@@ -908,22 +970,18 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
     }
     "EnumDef" -> {
       name := stmt_bind_name(stmt)
+      register_recursive_type(name)
       variants := stmt_enumdef_variants(stmt)
       n := len(variants)
       var_lines := @[]
       vi := 0
       while (vi < n) {
-        v := variants[vi]
-        vname := variantdef_name(v)
-        vpayload := variantdef_payload(v)
-        vline := match vpayload {
-          none -> "${ind(i + 1)}${vname},"
-          Some(ty) -> "${ind(i + 1)}${vname}(${codegen_type(ty)}),"
-        }
-        push(var_lines, vline)
+        push(var_lines, cg_variant_line(i + 1, variants[vi]))
         vi := vi + 1
       }
-      ind(i) + "#[derive(Debug, Clone, PartialEq)]\n" + ind(i) + "enum " + name + " {\n" + join(var_lines, "\n") + "\n" + ind(i) + "}"
+      out := ind(i) + "#[derive(Debug, Clone, PartialEq)]\n" + ind(i) + "enum " + name + " {\n" + join(var_lines, "\n") + "\n" + ind(i) + "}"
+      clear_recursive_types()
+      out
     }
     "Expression" -> {
       e := stmt_expression_expr(stmt)
@@ -931,6 +989,22 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
     }
     _ -> ""
   }
+}
+
+
+// ─── tl_infer_type ────────────────────────────────────────────────────────────
+// Infer the Rust type for a @thread_local initializer expression.
+
+tl_infer_type := (e: Expr) -> str {
+  ek := expr_kind(e)
+  if (ek == "Int") { "i32" }
+  else { if (ek == "Float") { "f32" }
+  else { if (ek == "Bool") { "bool" }
+  else { if (ek == "Str") { "String" }
+  else { if (ek == "List") { "Vec<_>" }
+  else { if (ek == "Dict") { "std::collections::HashMap<_, _>" }
+  else { if (ek == "Set") { "std::collections::HashSet<_>" }
+  else { "i32" }}}}}}}
 }
 
 
@@ -950,10 +1024,49 @@ emit_attrs := (attrs: @[str]) -> str {
 }
 
 
+// ─── cg_variant_line ──────────────────────────────────────────────────────────
+// Emit one enum variant line at indentation i.
+
+cg_variant_line := (i: int, v: VariantDef) -> str {
+  vname := variantdef_name(v)
+  vfields := variantdef_fields(v)
+  nf := len(vfields)
+  if (nf == 0) {
+    "${ind(i)}${vname},"
+  } else {
+    any_named := variantdef_fields_any_named(v)
+    if (any_named) {
+      parts := @[]
+      fi := 0
+      while (fi < nf) {
+        field_opt, fty := vfields[fi]
+        part := match field_opt {
+          Some(fname) -> fname + ": " + codegen_type_variant_field(fty)
+          none -> "_: " + codegen_type_variant_field(fty)
+        }
+        push(parts, part)
+        fi := fi + 1
+      }
+      // Use concatenation to avoid literal { and } inside a format! string
+      "${ind(i)}${vname}" + " { " + join(parts, ", ") + " },"
+    } else {
+      type_parts := @[]
+      fi := 0
+      while (fi < nf) {
+        skip, fty := vfields[fi]
+        push(type_parts, codegen_type_variant_field(fty))
+        fi := fi + 1
+      }
+      "${ind(i)}${vname}(" + join(type_parts, ", ") + "),"
+    }
+  }
+}
+
+
 // ─── cg_top_fn ────────────────────────────────────────────────────────────────
 // Emit a top-level pub fn.
 
-cg_top_fn := (i: int, name: str, params: @[Param], ret_ty: Option<TypeExpr>, void_mark: Option<TypeExpr>, stmts: @[Stmt], fe: Expr) -> str {
+cg_top_fn := (i: int, name: str, explicit_gen: @[str], params: @[Param], ret_ty: Option<TypeExpr>, void_mark: Option<TypeExpr>, stmts: @[Stmt], fe: Expr) -> str {
   pn := len(params)
   param_names := @[]
   pk := 0
@@ -965,7 +1078,7 @@ cg_top_fn := (i: int, name: str, params: @[Param], ret_ty: Option<TypeExpr>, voi
   param_str := codegen_params_mut(params)
   register_fn_sig(name, params)
   set_current_mut_ref_params(params)
-  generics := infer_generics(params)
+  generics := if (len(explicit_gen) > 0) { explicit_gen } else { infer_generics(params) }
   gen_str := generics_str(generics)
   ret_str := match void_mark {
     Some(_) -> ""
@@ -1032,19 +1145,13 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
     }
     "EnumDef" -> {
       name := stmt_bind_name(stmt)
+      register_recursive_type(name)
       variants := stmt_enumdef_variants(stmt)
       n := len(variants)
       var_lines := @[]
       vi := 0
       while (vi < n) {
-        v := variants[vi]
-        vname := variantdef_name(v)
-        vpayload := variantdef_payload(v)
-        vline := match vpayload {
-          none -> "${ind(i + 1)}${vname},"
-          Some(ty) -> "${ind(i + 1)}${vname}(${codegen_type(ty)}),"
-        }
-        push(var_lines, vline)
+        push(var_lines, cg_variant_line(i + 1, variants[vi]))
         vi := vi + 1
       }
       attrs := stmt_attrs(stmt)
@@ -1054,11 +1161,13 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         if (contains(a, "derive(")) { has_derive := true }
       }
       body := name + " {\n" + join(var_lines, "\n") + "\n}"
-      if (has_derive) {
+      out := if (has_derive) {
         attrs_str + "pub enum " + body
       } else {
         attrs_str + "#[derive(Debug, Clone, PartialEq)]\npub enum " + body
       }
+      clear_recursive_types()
+      out
     }
     "Bind" -> {
       name := stmt_bind_name(stmt)
@@ -1069,7 +1178,8 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         void_mark := expr_lambda_void_mark(e)
         lam_stmts := expr_lambda_stmts(e)
         fe2 := expr_lambda_final(e)
-        fn_str := cg_top_fn(i, name, params, ret_ty, void_mark, lam_stmts, fe2)
+        explicit_gen := expr_lambda_generics(e)
+        fn_str := cg_top_fn(i, name, explicit_gen, params, ret_ty, void_mark, lam_stmts, fe2)
         "" + emit_attrs(stmt_attrs(stmt)) + fn_str
       } else {
         ek := expr_kind(e)
@@ -1094,7 +1204,8 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         void_mark := expr_lambda_void_mark(e)
         lam_stmts := expr_lambda_stmts(e)
         fe2 := expr_lambda_final(e)
-        cg_top_fn(i, name, params, ret_ty, void_mark, lam_stmts, fe2)
+        explicit_gen := expr_lambda_generics(e)
+        cg_top_fn(i, name, explicit_gen, params, ret_ty, void_mark, lam_stmts, fe2)
       } else {
         ek := expr_kind(e)
         ty_str := if (ek == "Str") { "&str" } else {
@@ -1113,6 +1224,25 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
     "BindPat" -> ""
     "Assign" -> ""
     "Expression" -> cg_expr(0, scope_new(), stmt_expression_expr(stmt)) + ";"
+    "ThreadLocal" -> {
+      tl_name := stmt_thread_local_name(stmt)
+      tl_e := stmt_thread_local_expr(stmt)
+      upper := to_upper(tl_name)
+      ty_str := tl_infer_type(tl_e)
+      init_str := if (expr_kind(tl_e) == "Str") {
+        codegen_string(expr_str_val(tl_e)) + ".to_string()"
+      } else {
+        cg_expr(0, scope_new(), tl_e)
+      }
+      register_thread_local_var(tl_name)
+      tl_lines := @[]
+      push(tl_lines, "thread_local! {")
+      push(tl_lines, "    static " + upper + ": std::cell::RefCell<" + ty_str + "> = std::cell::RefCell::new(" + init_str + ");")
+      push(tl_lines, "}")
+      push(tl_lines, "pub fn " + tl_name + "_get() -> " + ty_str + " { " + upper + ".with(|v| v.borrow().clone()) }")
+      push(tl_lines, "pub fn " + tl_name + "_set(val: " + ty_str + ") { " + upper + ".with(|v| *v.borrow_mut() = val); }")
+      join(tl_lines, "\n")
+    }
     _ -> ""
   }
 }
@@ -1124,6 +1254,7 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
 
 codegen_program_with_resolved := (prog: @[Stmt], hom_files: HomFiles, rs_content: RsContent) -> str {
   n := len(prog)
+  clear_thread_local_vars()
   // Pass 1: collect InnerAttr stmts and emit as #![..] at top
   inner_lines := @[]
   j := 0

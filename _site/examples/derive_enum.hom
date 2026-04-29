@@ -1,0 +1,17 @@
+// derive_enum.hom — @derive on enum with self-recursive field (Box auto-inserted)
+use std
+
+@derive(Clone, Debug, PartialEq)
+Expr := enum {
+  Num(int)
+  Neg(Expr)
+}
+
+main := () -> _ {
+  a := Expr.Num(5)
+  b := a
+  match b {
+    Expr.Num(v) -> print("num=${v}")
+    _ -> print("other")
+  }
+}

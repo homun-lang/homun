@@ -22,6 +22,8 @@ pub enum Stmt {
     Expression(Expr),
     /// File-top `@!` inner attribute
     InnerAttr(String),
+    /// Module-level `@thread_local name ::= expr`
+    ThreadLocal(Name, Expr),
 }
 
 #[derive(Debug, Clone)]
@@ -33,7 +35,7 @@ pub struct FieldDef {
 #[derive(Debug, Clone)]
 pub struct VariantDef {
     pub name: Name,
-    pub payload: Option<TypeExpr>,
+    pub fields: Vec<(Option<Name>, TypeExpr)>,
 }
 
 // ─────────────────────────────────────────
@@ -79,6 +81,7 @@ pub enum Expr {
 
     // Lambda
     Lambda {
+        generics: Vec<Name>, // explicit constraints, pre-rendered: ["T: Hash + Eq", "U: Clone"]
         params: Vec<Param>,
         ret_ty: Option<TypeExpr>,
         void_mark: Option<TypeExpr>,
@@ -140,8 +143,9 @@ pub enum Pat {
     Var(Name),
     Lit(Expr),
     Tuple(Vec<Pat>),
-    Enum(Name, Option<Box<Pat>>),
+    Enum(Name, Vec<Pat>),
     None,
+    Or(Vec<Pat>),
 }
 
 // ─────────────────────────────────────────

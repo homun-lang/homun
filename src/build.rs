@@ -65,6 +65,10 @@ fn generate_runtime() {
         .filter(|l| l.trim() != "use std::cell::RefCell;")
         .collect::<Vec<_>>()
         .join("\n");
+    // path.rs — path utilities
+    let path = std::fs::read_to_string(hom.join("path.rs")).unwrap();
+    // fs.rs — filesystem utilities
+    let fs = std::fs::read_to_string(hom.join("fs.rs")).unwrap();
 
     let code = format!(
         "// ── builtin ────────────────────────────────────────────────\n\
@@ -74,7 +78,11 @@ fn generate_runtime() {
          // ── re ─────────────────────────────────────────────────────\n\
          {re}\n\n\
          // ── heap ───────────────────────────────────────────────────\n\
-         {heap}\n"
+         {heap}\n\n\
+         // ── path ───────────────────────────────────────────────────\n\
+         {path}\n\n\
+         // ── fs ─────────────────────────────────────────────────────\n\
+         {fs}\n"
     );
 
     // Strip #[cfg(test)] mod tests { ... } blocks from the concatenated runtime
@@ -92,6 +100,8 @@ fn generate_runtime() {
     println!("cargo:rerun-if-changed=hom-std/std/mod.rs");
     println!("cargo:rerun-if-changed=hom-std/re.rs");
     println!("cargo:rerun-if-changed=hom-std/heap.rs");
+    println!("cargo:rerun-if-changed=hom-std/path.rs");
+    println!("cargo:rerun-if-changed=hom-std/fs.rs");
 }
 
 fn find_homunc() -> PathBuf {

@@ -1,0 +1,33 @@
+use std
+
+@thread_local
+step_count ::= 0
+
+@thread_local
+last_msg ::= ""
+
+step := () -> _ {
+  step_count := step_count + 1
+}
+
+record_msg := (msg: str) -> _ {
+  last_msg := msg
+}
+
+get_steps := () -> int {
+  step_count
+}
+
+get_msg := () -> str {
+  last_msg
+}
+
+main := () -> _ {
+  step()
+  step()
+  step()
+  record_msg("hello")
+  n := get_steps()
+  m := get_msg()
+  print("steps=${n} msg=${m}")
+}

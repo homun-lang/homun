@@ -1,0 +1,27 @@
+use std
+
+// Explicit generic — single bound
+identity := <T: Clone>(x: T) -> T {
+  x
+}
+
+// Two explicit generics — returns first, ignores second
+first_of := <T: Clone, U: Clone>(a: T, b: U) -> T {
+  a
+}
+
+// Multiple bounds on one type param
+cloned := <T: Clone>(x: T) -> T {
+  x
+}
+
+main := () -> _ {
+  n := identity(7)
+  t := identity("hello")
+  print("n=${n}")
+  print("t=${t}")
+  r := first_of(99, "world")
+  print("r=${r}")
+  w := cloned(42)
+  print("w=${w}")
+}

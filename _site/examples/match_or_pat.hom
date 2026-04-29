@@ -1,0 +1,27 @@
+// match_or_pat.hom — or-patterns in match arms (F3)
+
+use std
+
+Direction := enum { North, South, East, West }
+
+is_vertical := (d: Direction) -> bool {
+  match d {
+    Direction.North | Direction.South -> true
+    Direction.East | Direction.West   -> false
+  }
+}
+
+// Or-patterns with payload-free enum also work with wildcard
+describe := (d: Direction) -> str {
+  match d {
+    Direction.North | Direction.South -> "vertical"
+    _ -> "horizontal"
+  }
+}
+
+main := () -> _ {
+  print(is_vertical(Direction.North))
+  print(is_vertical(Direction.East))
+  print(describe(Direction.South))
+  print(describe(Direction.West))
+}
