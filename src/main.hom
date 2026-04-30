@@ -1,8 +1,11 @@
 // main.hom — CLI entry point: argument parsing and compilation dispatch.
 //
-// Ports main.rs logic to .hom using:
-//   src/main_imp.rs — I/O helpers, compile_source_fn, compile_file_fn,
-//                     result_ok_or_exit, print_str, eprint_str, homunc_version
+// Uses src/main_imp.rs for:
+//   I/O: read_stdin, write_file, exit_process, get_args, print_str, eprint_str
+//   Setup: preamble, homunc_version, emit_runtime_fn, result_ok_or_exit
+//   Pipeline wrappers: lex, parse, sema_analyze_skip_undef,
+//                      register_known_dep_fns, codegen_program,
+//                      resolve, resolve_module, build_embed_map
 //
 // Public API (main() is the binary entry point):
 //   main() — parse CLI args, dispatch to compile helpers
@@ -76,12 +79,73 @@ print_help := () -> _ {
 }
 
 
+// ─── dedup_use_lines ─────────────────────────────────────────────────────────
+// Deduplicate `use ...;` import lines in generated Rust source.
+// When multiple embedded libraries are inlined they may emit duplicate use lines.
+
+dedup_use_lines := (src: str) -> str {
+  ls := lines(src)
+  seen ::= @[]
+  out ::= @[]
+  for line in ls {
+    trimmed := trim(line)
+    n := len(trimmed)
+    is_use := n >= 5 and find(trimmed, "use ") == 0 and char_at(trimmed, n - 1) == ";"
+    if (is_use) {
+      if (not trimmed in seen) {
+        seen ::= seen + @[trimmed]
+        out ::= out + @[line]
+      }
+    } else {
+      out ::= out + @[line]
+    }
+  }
+  join(out, "\n")
+}
+
+
+// ─── compile_source ───────────────────────────────────────────────────────────
+// Compile Homun source text, returning Rust code or an error.
+
+compile_source := (source: str, raw: bool) -> CompileResult {
+  tokens := lex(source)?
+  ast := parse(tokens)?
+  sema_errs := sema_analyze_skip_undef(ast, @[])
+  if (len(sema_errs) > 0) {
+    err_str := join(sema_errs, "\n")
+    => Err("Semantic errors:\n${err_str}")
+  }
+  rs_content := build_embed_map(ast)
+  register_known_dep_fns()
+  code := codegen_program(ast, rs_content)
+  prefix := if (raw) { "" } else { preamble() }
+  Ok(dedup_use_lines("${prefix}${code}"))
+}
+
+
+// ─── compile_file ─────────────────────────────────────────────────────────────
+// Compile a .hom file with full multi-file resolution, returning Rust or error.
+
+compile_file := (path: str, raw: bool, module: bool) -> CompileResult {
+  resolved_r := if (module) { resolve_module(path) } else { resolve(path) }
+  resolved := resolved_r?
+  register_known_dep_fns()
+  prefix := if (raw) { "" } else { preamble() }
+  codes ::= @[]
+  for file in resolved.files {
+    codes ::= codes + @[file.rust_code]
+  }
+  joined := join(codes, "\n")
+  Ok(dedup_use_lines("${prefix}${joined}"))
+}
+
+
 // ─── compile_from_stdin ───────────────────────────────────────────────────────
 // Read Homun source from stdin and print compiled Rust to stdout.
 
 compile_from_stdin := (raw: bool) -> _ {
   src := read_stdin()
-  result := compile_source_fn(src, raw)
+  result := compile_source(src, raw)
   out := result_ok_or_exit(result)
   print_str(out)
 }
@@ -91,7 +155,7 @@ compile_from_stdin := (raw: bool) -> _ {
 // Compile a .hom file and print the resulting Rust to stdout.
 
 compile_to_stdout := (path: str, raw: bool, module: bool) -> _ {
-  result := compile_file_fn(path, raw, module)
+  result := compile_file(path, raw, module)
   out := result_ok_or_exit(result)
   print_str(out)
 }
@@ -101,7 +165,7 @@ compile_to_stdout := (path: str, raw: bool, module: bool) -> _ {
 // Compile a .hom file and write the resulting Rust to an output file.
 
 compile_to_file := (src: str, out: str, raw: bool, module: bool) -> _ {
-  result := compile_file_fn(src, raw, module)
+  result := compile_file(src, raw, module)
   code := result_ok_or_exit(result)
   write_file(out, code)
   print("Compiled ${src} -> ${out}")

@@ -6,6 +6,24 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.83 — 2026-04-29 — Hom:Rs ratio rebalanced via 10 self-host reductions
+
+Applied the v0.82 language additions (multi-payload variants, or-patterns, `@derive` on .hom enums, `@thread_local`, `path`/`fs` stdlib, explicit generics) to shrink the compiler's `_imp.rs` and `dep/` Rust shims. Foundation features F1–F6 landed alongside v0.82's F7 in the same dev cycle.
+
+- `Pos`/`Token`/`TokenKind` migrated from `lexer_imp.rs` to `lexer.hom`; deleted 8 `make_token_*` constructors
+- Inlined ~60 trivial `mk_*` AST constructors in `parser.hom`; call sites use enum literals directly (`Stmt.Bind(n, e, a)`)
+- Parser state: `parse_pos`/`parse_err`/`gensym_counter` now `@thread_local` bindings in `parser.hom`
+- `Found`/`ResolverState`/`ResolvedFile` migrated to `resolver.hom` with `@derive(Clone)`; ~100 lines pulled out of `resolver_imp.rs`
+- Resolver `read_file`/`file_exists`/`path_*` wrappers replaced with `fs`/`path` stdlib calls
+- 8 codegen helpers moved to `codegen.hom`: `parse_interp`, `escape_str`, `codegen_string`, `codegen_type`, `codegen_type_variant_field`, `codegen_param`, `codegen_params_mut`, `infer_generics`
+- Fn-signature registry split: logic in `codegen.hom`, thread-local storage moved from `dep/codegen_helpers.rs` to `codegen_imp.rs` (per-module layering)
+- `dep/scope.rs` (64 lines) migrated to `src/scope.hom` (23 lines) + thin `scope_imp.rs` (8 lines); Scope backed by `@[str]` Vec
+- `compile_source` / `compile_file` pipeline migrated from `main_imp.rs` to `main.hom`; `main_imp.rs` keeps only system I/O + version + preamble
+- Net: ~−1,000 lines of `.rs` (mix of absorbed-into-`.hom` and net-deleted); 182 tests pass throughout, `cargo fmt` + `cargo clippy -- -D warnings` clean
+- Deferred: `src/ast.rs` → `src/ast.hom` migration. Blocked by `codegen_type_variant_field` not auto-Boxing through `Option<T>` wrappers (only direct `Name` fields). When v0.82 bootstrap is built with the v0.83 codegen.hom fix, this migration can land.
+
+---
+
 ### v0.82 — 2026-04-29 — Explicit generics syntax `<T: Trait>`
 
 - Added `<T: Trait + Trait, U: Trait>(params) -> ret { body }` lambda syntax for explicit generic constraints

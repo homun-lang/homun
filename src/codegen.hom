@@ -2,7 +2,7 @@
 //
 // Ports codegen.rs logic to .hom using:
 //   dep/ast_access.rs      — stmt_kind/expr_kind/pat_kind + typed accessors
-//   dep/scope.rs           — Scope (HashSet<String>) wrapper
+//   src/scope.hom          — Scope (@[str]) wrapper
 //   dep/codegen_helpers.rs — ind, codegen_string, codegen_type, etc.
 //   src/codegen_imp.rs     — RsContent/HomFiles type aliases, accessors
 //
@@ -19,6 +19,337 @@
 // `use codegen_imp` sets has_rs_dep=true so homunc skips undefined-reference
 // checks for dep/ functions and runtime functions (join, push, replace, etc.)
 use codegen_imp
+use scope
+
+
+// ─── fn-signature registry (logic) ───────────────────────────────────────────
+// State lives in dep/codegen_helpers.rs (FN_MUT_PARAMS, FN_DEFAULTS,
+// CURRENT_MUT_REF_PARAMS). These functions hold the logic; the dep primitives
+// fn_mut_params_insert / fn_defaults_insert / current_mut_ref_params_* / etc.
+// handle raw storage.
+
+register_known_dep_fns := () -> _ {
+  fn_mut_params_insert("heap_push",     @[true, false, false])
+  fn_mut_params_insert("heap_pop",      @[true])
+  fn_mut_params_insert("heap_len",      @[true])
+  fn_mut_params_insert("heap_is_empty", @[true])
+  fn_defaults_insert("heap_push",     @[none, none, none])
+  fn_defaults_insert("heap_pop",      @[none])
+  fn_defaults_insert("heap_len",      @[none])
+  fn_defaults_insert("heap_is_empty", @[none])
+}
+
+register_fn_sig := (name: str, params: @[Param]) -> _ {
+  flags := @[]
+  defaults := @[]
+  pi := 0
+  while (pi < len(params)) {
+    p := params[pi]
+    push(flags, param_is_mutable(p))
+    push(defaults, param_default(p))
+    pi := pi + 1
+  }
+  fn_mut_params_insert(name, flags)
+  fn_defaults_insert(name, defaults)
+}
+
+set_current_mut_ref_params := (params: @[Param]) -> _ {
+  current_mut_ref_params_clear()
+  pi := 0
+  while (pi < len(params)) {
+    p := params[pi]
+    if (param_is_mutable(p)) {
+      current_mut_ref_params_add(param_name(p))
+    }
+    pi := pi + 1
+  }
+}
+
+fill_default_args := (fn_name: str, args: @[Expr]) -> @[Expr] {
+  defs := fn_defaults_get_for(fn_name)
+  n_args := len(args)
+  n_params := len(defs)
+  if (n_args >= n_params) { => args }
+  has_all := true
+  mi := n_args
+  while (mi < n_params) {
+    match defs[mi] {
+      none -> { has_all := false }
+      _ -> {}
+    }
+    mi := mi + 1
+  }
+  if (not has_all) { => args }
+  result := args
+  fi := n_args
+  while (fi < n_params) {
+    match defs[fi] {
+      Some(default_expr) -> { push(result, default_expr) }
+      none -> {}
+    }
+    fi := fi + 1
+  }
+  result
+}
+
+
+// ─── escape_str ───────────────────────────────────────────────────────────────
+// Escape special chars for embedding in a Rust string literal.
+
+escape_str := (s: str) -> str {
+  cs := chars(s)
+  out ::= str("")
+  i ::= 0
+  n := len(cs)
+  while (i < n) {
+    c := cs[i]
+    if (c == "\"") { out ::= out + "\\\"" }
+    else { if (c == "\\") { out ::= out + "\\\\" }
+    else { if (c == "\n") { out ::= out + "\\n" }
+    else { if (c == "\t") { out ::= out + "\\t" }
+    else { out ::= out + str(c) } } } }
+    i ::= i + 1
+  }
+  out
+}
+
+
+// ─── parse_interp ─────────────────────────────────────────────────────────────
+// Parse a Homun string for ${} interpolation.
+// Returns (format_string, vec_of_arg_expressions).
+
+parse_interp := (s: str) -> (str, @[str]) {
+  cs := chars(s)
+  n := len(cs)
+  fmt ::= str("")
+  args ::= @[]
+  i ::= 0
+  while (i < n) {
+    c := cs[i]
+    if (c == "{" and i + 1 < n and cs[i + 1] == "{") {
+      fmt ::= fmt + "{{"
+      i ::= i + 2
+    } else {
+      if (c == "$" and i + 1 < n and cs[i + 1] == "{") {
+        i ::= i + 2
+        expr_s ::= str("")
+        while (i < n and cs[i] != "}") {
+          expr_s ::= expr_s + str(cs[i])
+          i ::= i + 1
+        }
+        push(args, expr_s)
+        fmt ::= fmt + "{}"
+        if (i < n) {
+          i ::= i + 1
+        }
+      } else {
+        if (c == "\"") {
+          fmt ::= fmt + "\\\""
+        } else {
+          fmt ::= fmt + str(c)
+        }
+        i ::= i + 1
+      }
+    }
+  }
+  (fmt, args)
+}
+
+
+// ─── codegen_string ───────────────────────────────────────────────────────────
+// Render a Homun string value as a Rust string expression.
+
+codegen_string := (s: str) -> str {
+  fmt_str, fmt_args := parse_interp(s)
+  if (len(fmt_args) == 0) {
+    "\"" + escape_str(s) + "\""
+  } else {
+    "format!(\"" + fmt_str + "\", " + join(fmt_args, ", ") + ")"
+  }
+}
+
+
+// ─── codegen_type ─────────────────────────────────────────────────────────────
+// Convert a Homun TypeExpr to its Rust type spelling.
+
+codegen_type := (ty: TypeExpr) -> str {
+  k := type_kind(ty)
+  match k {
+    "Name" -> {
+      n := type_name_val(ty)
+      match n {
+        "int"   -> "i32"
+        "float" -> "f32"
+        "bool"  -> "bool"
+        "str"   -> "String"
+        "char"  -> "char"
+        "none"  -> "Option<_>"
+        _       -> n
+      }
+    }
+    "List"    -> "Vec<" + codegen_type(type_list_inner(ty)) + ">"
+    "Dict"    -> {
+      ks := codegen_type(type_dict_key(ty))
+      vs := codegen_type(type_dict_val(ty))
+      "std::collections::HashMap<" + ks + ", " + vs + ">"
+    }
+    "Set"     -> "std::collections::HashSet<" + codegen_type(type_set_inner(ty)) + ">"
+    "Option"  -> "Option<" + codegen_type(type_option_inner(ty)) + ">"
+    "Tuple"   -> {
+      ts := type_tuple_items(ty)
+      parts := @[]
+      ti := 0
+      while (ti < len(ts)) {
+        push(parts, codegen_type(ts[ti]))
+        ti := ti + 1
+      }
+      "(" + join(parts, ", ") + ")"
+    }
+    "Generic" -> {
+      gn := type_generic_name(ty)
+      gps := type_generic_params(ty)
+      parts := @[]
+      gi := 0
+      while (gi < len(gps)) {
+        push(parts, codegen_type(gps[gi]))
+        gi := gi + 1
+      }
+      gn + "<" + join(parts, ", ") + ">"
+    }
+    "Void"    -> "()"
+    "Infer"   -> "_"
+    _         -> "_"
+  }
+}
+
+
+// ─── codegen_type_variant_field ───────────────────────────────────────────────
+// Like codegen_type but wraps self-recursive names in Box<...>.
+
+codegen_type_variant_field := (ty: TypeExpr) -> str {
+  k := type_kind(ty)
+  if (k == "Name") {
+    n := type_name_val(ty)
+    if (is_self_recursive_type(n)) {
+      "Box<" + n + ">"
+    } else {
+      codegen_type(ty)
+    }
+  } else {
+    if (k == "Option") {
+      "Option<" + codegen_type_variant_field(type_option_inner(ty)) + ">"
+    } else {
+      if (k == "Generic") {
+        gn := type_generic_name(ty)
+        gps := type_generic_params(ty)
+        if (gn == "Option" and len(gps) == 1) {
+          "Option<" + codegen_type_variant_field(gps[0]) + ">"
+        } else {
+          codegen_type(ty)
+        }
+      } else {
+        if (k == "Tuple") {
+          ts := type_tuple_items(ty)
+          parts := @[]
+          ti := 0
+          while (ti < len(ts)) {
+            push(parts, codegen_type_variant_field(ts[ti]))
+            ti := ti + 1
+          }
+          "(" + join(parts, ", ") + ")"
+        } else {
+          codegen_type(ty)
+        }
+      }
+    }
+  }
+}
+
+
+// ─── codegen_param ────────────────────────────────────────────────────────────
+// Render a single param without mut prefix (for inline lambdas).
+
+codegen_param := (p: Param) -> str {
+  n := param_name(p)
+  if (n == "_") {
+    "_: _"
+  } else {
+    match param_ty(p) {
+      none    -> n + ": _"
+      Some(t) -> n + ": " + codegen_type(t)
+    }
+  }
+}
+
+
+// ─── codegen_params_mut ───────────────────────────────────────────────────────
+// Render a param list with mut/&mut for top-level function signatures.
+
+codegen_params_mut := (params: @[Param]) -> str {
+  gen_names := @["T", "U", "V", "W", "X", "Y", "Z"]
+  gen_idx ::= 0
+  parts := @[]
+  pi ::= 0
+  pn := len(params)
+  while (pi < pn) {
+    p := params[pi]
+    pname := param_name(p)
+    pmut := param_is_mutable(p)
+    part := if (pname == "_") {
+      "_: _"
+    } else {
+      if (pmut) {
+        match param_ty(p) {
+          Some(t) -> pname + ": &mut " + codegen_type(t)
+          none    -> {
+            g := gen_names[gen_idx]
+            gen_idx ::= gen_idx + 1
+            pname + ": &mut " + str(g)
+          }
+        }
+      } else {
+        match param_ty(p) {
+          Some(t) -> "mut " + pname + ": " + codegen_type(t)
+          none    -> {
+            g := gen_names[gen_idx]
+            gen_idx ::= gen_idx + 1
+            "mut " + pname + ": " + str(g)
+          }
+        }
+      }
+    }
+    push(parts, part)
+    pi ::= pi + 1
+  }
+  join(parts, ", ")
+}
+
+
+// ─── infer_generics ───────────────────────────────────────────────────────────
+// Infer generic type params needed for a function (one per un-typed param).
+
+infer_generics := (params: @[Param]) -> @[str] {
+  gen_names := @["T", "U", "V", "W", "X", "Y", "Z"]
+  n ::= 0
+  pi := 0
+  while (pi < len(params)) {
+    p := params[pi]
+    if (param_name(p) != "_") {
+      match param_ty(p) {
+        none -> { n ::= n + 1 }
+        _ -> {}
+      }
+    }
+    pi := pi + 1
+  }
+  result := @[]
+  gi := 0
+  while (gi < n) {
+    push(result, str(gen_names[gi]) + ": Clone")
+    gi := gi + 1
+  }
+  result
+}
 
 
 // ─── pat_names_list ───────────────────────────────────────────────────────────
@@ -729,7 +1060,11 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       e := stmt_bind_expr(stmt)
       // Thread-local set: name := rhs  →  name_set(rhs);
       if (is_thread_local_var(name)) {
-        rhs_s := cg_expr(i, sc, e)
+        rhs_s := if (expr_kind(e) == "Str") {
+          codegen_string(expr_str_val(e)) + ".to_string()"
+        } else {
+          cg_expr(i, sc, e)
+        }
         => "${ind(i)}${name}_set(${rhs_s});"
       }
       if (expr_kind(e) == "Lambda") {
@@ -784,7 +1119,11 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       e := stmt_bind_mut_expr(stmt)
       // Thread-local set: name ::= rhs  →  name_set(rhs);
       if (is_thread_local_var(name)) {
-        rhs_s := cg_expr(i, sc, e)
+        rhs_s := if (expr_kind(e) == "Str") {
+          codegen_string(expr_str_val(e)) + ".to_string()"
+        } else {
+          cg_expr(i, sc, e)
+        }
         => "${ind(i)}${name}_set(${rhs_s});"
       }
       if (expr_kind(e) == "Lambda") {

@@ -1,176 +1,60 @@
-// parser_imp.rs — Type definitions and helper functions for parser.hom.
+// parser_imp.rs — Rust helpers for parser.hom.
 //
-// Uses thread-local state for tokens, position, and error. This avoids
-// expensive state cloning — .hom code just calls ps_peek_kind(), ps_advance(),
-// etc. without passing state around.
-//
-// Once an error is set (ps_set_err), all peek/check/consume/expect become
-// no-ops, so parsing "unwinds" naturally without explicit error checks.
+// Thread-local state (pos, err, gensym_counter) lives in parser.hom as
+// @thread_local bindings; the generated _get/_set accessors are called here.
+// PARSE_TOKENS stays in Rust because it needs a concrete Vec<Token> type.
 //
 // Public API groups:
-//   State management:  ps_init, ps_save, ps_restore, ps_advance, ps_pos
-//   Error handling:    ps_has_err, ps_get_err, ps_set_err, ps_clear_err
 //   Token inspection:  ps_peek_kind, ps_peek_ident, ps_peek_int, ...
 //   Token matching:    ps_check, ps_consume, ps_expect, ps_same_line
-//   AST constructors:  mk_stmt_*, mk_expr_*, mk_pat_*, mk_type_*, mk_param, ...
+//   AST constructors:  mk_expr_* (Box-wrapping variants), mk_type_list/dict/set, mk_variantdef_multi/positional
 //   Option helpers:    some_expr, none_expr, some_type, none_type, ...
 //   Utility:           split_block, names_to_pats, is_upper_first_str
 
 use std::cell::RefCell;
 
-// ─── Thread-local parser state ──────────────────────────────────────────────
+// ─── Thread-local token list (pos/err/gensym live in parser.hom) ────────────
 
 thread_local! {
     static PARSE_TOKENS: RefCell<Vec<Token>> = const { RefCell::new(vec![]) };
-    static PARSE_POS: RefCell<usize> = const { RefCell::new(0) };
-    static PARSE_ERR: RefCell<String> = const { RefCell::new(String::new()) };
-    static GENSYM_COUNTER: RefCell<usize> = const { RefCell::new(0) };
 }
 
 fn has_err_internal() -> bool {
-    PARSE_ERR.with(|e| !e.borrow().is_empty())
+    !parse_err_get().is_empty()
 }
 
 fn peek_token_internal() -> Token {
     PARSE_TOKENS.with(|t| {
         let tokens = t.borrow();
-        let pos = PARSE_POS.with(|p| *p.borrow());
+        let pos = parse_pos_get() as usize;
         let idx = pos.min(tokens.len() - 1);
         tokens[idx].clone()
     })
 }
 
 fn advance_internal() {
-    PARSE_POS.with(|p| {
-        let mut pos = p.borrow_mut();
-        let len = PARSE_TOKENS.with(|t| t.borrow().len());
-        if *pos < len {
-            *pos += 1;
-        }
-    });
+    let pos = parse_pos_get() as usize;
+    let len = PARSE_TOKENS.with(|t| t.borrow().len());
+    if pos < len {
+        parse_pos_set(parse_pos_get() + 1);
+    }
 }
 
+// TokenKind has @derive(Debug) in lexer.hom — extract variant name from "{:?}"
 fn token_kind_str(kind: &TokenKind) -> String {
-    match kind {
-        TokenKind::Int(_) => "Int",
-        TokenKind::Float(_) => "Float",
-        TokenKind::Bool(_) => "Bool",
-        TokenKind::Str(_) => "Str",
-        TokenKind::Char(_) => "Char",
-        TokenKind::None => "None",
-        TokenKind::Ident(_) => "Ident",
-        TokenKind::Use => "Use",
-        TokenKind::Struct => "Struct",
-        TokenKind::Enum => "Enum",
-        TokenKind::For => "For",
-        TokenKind::In => "In",
-        TokenKind::While => "While",
-        TokenKind::Do => "Do",
-        TokenKind::If => "If",
-        TokenKind::Else => "Else",
-        TokenKind::Match => "Match",
-        TokenKind::Break => "Break",
-        TokenKind::Continue => "Continue",
-        TokenKind::And => "And",
-        TokenKind::Or => "Or",
-        TokenKind::Not => "Not",
-        TokenKind::As => "As",
-        TokenKind::Rec => "Rec",
-        TokenKind::MutAssign => "MutAssign",
-        TokenKind::DoubleColon => "DoubleColon",
-        TokenKind::Assign => "Assign",
-        TokenKind::Arrow => "Arrow",
-        TokenKind::FatArrow => "FatArrow",
-        TokenKind::Pipe => "Pipe",
-        TokenKind::Dot => "Dot",
-        TokenKind::Plus => "Plus",
-        TokenKind::Minus => "Minus",
-        TokenKind::Star => "Star",
-        TokenKind::Slash => "Slash",
-        TokenKind::Percent => "Percent",
-        TokenKind::Eq => "Eq",
-        TokenKind::Neq => "Neq",
-        TokenKind::Lt => "Lt",
-        TokenKind::Gt => "Gt",
-        TokenKind::Le => "Le",
-        TokenKind::Ge => "Ge",
-        TokenKind::Colon => "Colon",
-        TokenKind::Comma => "Comma",
-        TokenKind::Semi => "Semi",
-        TokenKind::Underscore => "Underscore",
-        TokenKind::At => "At",
-        TokenKind::Bang => "Bang",
-        TokenKind::Question => "Question",
-        TokenKind::LParen => "LParen",
-        TokenKind::RParen => "RParen",
-        TokenKind::LBrace => "LBrace",
-        TokenKind::RBrace => "RBrace",
-        TokenKind::LBracket => "LBracket",
-        TokenKind::RBracket => "RBracket",
-        TokenKind::Eof => "Eof",
-    }
-    .to_string()
+    format!("{:?}", kind)
+        .split('(')
+        .next()
+        .unwrap_or("Eof")
+        .to_string()
 }
 
-// ─── Public state management ────────────────────────────────────────────────
-
-pub fn ps_init(tokens: Vec<Token>) {
-    PARSE_TOKENS.with(|t| *t.borrow_mut() = tokens);
-    PARSE_POS.with(|p| *p.borrow_mut() = 0);
-    PARSE_ERR.with(|e| *e.borrow_mut() = String::new());
-    GENSYM_COUNTER.with(|c| *c.borrow_mut() = 0);
-}
-
-/// Generate a unique temporary name like "_sd0", "_sd1", etc.
-pub fn ps_gensym(prefix: String) -> String {
-    GENSYM_COUNTER.with(|c| {
-        let n = *c.borrow();
-        *c.borrow_mut() = n + 1;
-        format!("{}{}", prefix, n)
-    })
-}
-
-pub fn ps_save() -> i32 {
-    PARSE_POS.with(|p| *p.borrow() as i32)
-}
-
-pub fn ps_restore(pos: i32) {
-    PARSE_POS.with(|p| *p.borrow_mut() = pos as usize);
-}
-
-pub fn ps_advance() {
-    if has_err_internal() {
-        return;
-    }
-    advance_internal();
-}
-
-pub fn ps_pos() -> i32 {
-    PARSE_POS.with(|p| *p.borrow() as i32)
-}
-
-// ─── Error handling ─────────────────────────────────────────────────────────
-
-pub fn ps_has_err() -> bool {
-    has_err_internal()
-}
-
-pub fn ps_get_err() -> String {
-    PARSE_ERR.with(|e| e.borrow().clone())
-}
-
-/// Set error — only the first error is kept.
-pub fn ps_set_err(msg: String) {
-    PARSE_ERR.with(|e| {
-        let mut err = e.borrow_mut();
-        if err.is_empty() {
-            *err = msg;
-        }
-    });
-}
-
+// Thin Rust wrapper — sets parse_err back to empty string.
+// Kept here instead of .hom because assigning "" to a @thread_local String
+// requires String::new() (not a &str literal), which the current bootstrap
+// codegen doesn't add automatically for the BindMut→set path.
 pub fn ps_clear_err() {
-    PARSE_ERR.with(|e| *e.borrow_mut() = String::new());
+    parse_err_set(String::new());
 }
 
 // ─── Token inspection ───────────────────────────────────────────────────────
@@ -194,7 +78,7 @@ pub fn ps_peek_ident() -> String {
 pub fn ps_peek_int() -> i64 {
     let t = peek_token_internal();
     match t.kind {
-        TokenKind::Int(n) => n,
+        TokenKind::Int(n) => n as i64,
         _ => 0,
     }
 }
@@ -202,7 +86,7 @@ pub fn ps_peek_int() -> i64 {
 pub fn ps_peek_float() -> f64 {
     let t = peek_token_internal();
     match t.kind {
-        TokenKind::Float(f) => f,
+        TokenKind::Float(f) => f as f64,
         _ => 0.0,
     }
 }
@@ -271,7 +155,7 @@ pub fn ps_same_line() -> bool {
     }
     PARSE_TOKENS.with(|t| {
         let tokens = t.borrow();
-        let pos = PARSE_POS.with(|p| *p.borrow());
+        let pos = parse_pos_get() as usize;
         let cur = pos.min(tokens.len() - 1);
         cur > 0 && tokens[cur].pos.line == tokens[cur - 1].pos.line
     })
@@ -340,64 +224,10 @@ fn str_to_unop(s: &str) -> UnOp {
     }
 }
 
-// ─── AST constructors: Stmt ─────────────────────────────────────────────────
-
-pub fn mk_stmt_bind(name: String, expr: Expr) -> Stmt {
-    Stmt::Bind(name, expr, Vec::new())
-}
-pub fn mk_stmt_bind_mut(name: String, expr: Expr) -> Stmt {
-    Stmt::BindMut(name, expr)
-}
-pub fn mk_stmt_bind_pat(pat: Pat, expr: Expr) -> Stmt {
-    Stmt::BindPat(pat, expr)
-}
-pub fn mk_stmt_bind_pat_mut(pat: Pat, expr: Expr) -> Stmt {
-    Stmt::BindPatMut(pat, expr)
-}
-pub fn mk_stmt_assign(lhs: Expr, rhs: Expr) -> Stmt {
-    Stmt::Assign(lhs, rhs)
-}
-pub fn mk_stmt_use(path: Vec<String>) -> Stmt {
-    Stmt::Use(path)
-}
-pub fn mk_stmt_struct_def(name: String, fields: Vec<FieldDef>) -> Stmt {
-    Stmt::StructDef(name, fields, Vec::new())
-}
-pub fn mk_stmt_enum_def(name: String, variants: Vec<VariantDef>) -> Stmt {
-    Stmt::EnumDef(name, variants, Vec::new())
-}
-pub fn mk_stmt_expression(expr: Expr) -> Stmt {
-    Stmt::Expression(expr)
-}
-pub fn mk_stmt_inner_attr(body: String) -> Stmt {
-    Stmt::InnerAttr(body)
-}
-pub fn mk_stmt_thread_local(name: String, expr: Expr) -> Stmt {
-    Stmt::ThreadLocal(name, expr)
-}
-
 // ─── AST constructors: Expr ─────────────────────────────────────────────────
 
-pub fn mk_expr_int(n: i64) -> Expr {
-    Expr::Int(n)
-}
-pub fn mk_expr_float(f: f64) -> Expr {
-    Expr::Float(f)
-}
-pub fn mk_expr_bool(b: bool) -> Expr {
-    Expr::Bool(b)
-}
-pub fn mk_expr_str(s: String) -> Expr {
-    Expr::Str(s)
-}
 pub fn mk_expr_char_from_str(s: String) -> Expr {
     Expr::Char(s.chars().next().unwrap_or('\0'))
-}
-pub fn mk_expr_none() -> Expr {
-    Expr::None
-}
-pub fn mk_expr_var(name: String) -> Expr {
-    Expr::Var(name)
 }
 pub fn mk_expr_field(base: Expr, name: String) -> Expr {
     Expr::Field(Box::new(base), name)
@@ -417,21 +247,6 @@ pub fn mk_expr_slice(
         to.map(Box::new),
         step.map(Box::new),
     )
-}
-pub fn mk_expr_list(items: Vec<Expr>) -> Expr {
-    Expr::List(items)
-}
-pub fn mk_expr_dict(pairs: Vec<(Expr, Expr)>) -> Expr {
-    Expr::Dict(pairs)
-}
-pub fn mk_expr_set(items: Vec<Expr>) -> Expr {
-    Expr::Set(items)
-}
-pub fn mk_expr_tuple(items: Vec<Expr>) -> Expr {
-    Expr::Tuple(items)
-}
-pub fn mk_expr_struct_lit(name: Option<String>, fields: Vec<(String, Expr)>) -> Expr {
-    Expr::Struct(name, fields)
 }
 pub fn mk_expr_binop(op: String, lhs: Expr, rhs: Expr) -> Expr {
     Expr::BinOp(str_to_binop(&op), Box::new(lhs), Box::new(rhs))
@@ -502,9 +317,6 @@ pub fn mk_expr_block(stmts: Vec<Stmt>, final_expr: Expr) -> Expr {
 pub fn mk_expr_break_none() -> Expr {
     Expr::Break(std::option::Option::None)
 }
-pub fn mk_expr_continue() -> Expr {
-    Expr::Continue
-}
 pub fn mk_expr_try_unwrap(inner: Expr) -> Expr {
     Expr::TryUnwrap(Box::new(inner))
 }
@@ -512,41 +324,8 @@ pub fn mk_expr_early_return(val: Expr) -> Expr {
     Expr::EarlyReturn(Box::new(val))
 }
 
-// ─── AST constructors: Pat ──────────────────────────────────────────────────
-
-pub fn mk_pat_wild() -> Pat {
-    Pat::Wild
-}
-pub fn mk_pat_var(name: String) -> Pat {
-    Pat::Var(name)
-}
-pub fn mk_pat_lit(expr: Expr) -> Pat {
-    Pat::Lit(expr)
-}
-pub fn mk_pat_tuple(pats: Vec<Pat>) -> Pat {
-    Pat::Tuple(pats)
-}
-pub fn mk_pat_enum(name: String, payload: Option<Pat>) -> Pat {
-    match payload {
-        None => Pat::Enum(name, vec![]),
-        Some(p) => Pat::Enum(name, vec![p]),
-    }
-}
-pub fn mk_pat_enum_multi(name: String, pats: Vec<Pat>) -> Pat {
-    Pat::Enum(name, pats)
-}
-pub fn mk_pat_none() -> Pat {
-    Pat::None
-}
-pub fn mk_pat_or(pats: Vec<Pat>) -> Pat {
-    Pat::Or(pats)
-}
-
 // ─── AST constructors: TypeExpr ─────────────────────────────────────────────
 
-pub fn mk_type_name(name: String) -> TypeExpr {
-    TypeExpr::Name(name)
-}
 pub fn mk_type_list(inner: TypeExpr) -> TypeExpr {
     TypeExpr::List(Box::new(inner))
 }
@@ -556,52 +335,9 @@ pub fn mk_type_dict(k: TypeExpr, v: TypeExpr) -> TypeExpr {
 pub fn mk_type_set(inner: TypeExpr) -> TypeExpr {
     TypeExpr::Set(Box::new(inner))
 }
-pub fn mk_type_tuple(items: Vec<TypeExpr>) -> TypeExpr {
-    TypeExpr::Tuple(items)
-}
-pub fn mk_type_generic(name: String, params: Vec<TypeExpr>) -> TypeExpr {
-    TypeExpr::Generic(name, params)
-}
-pub fn mk_type_void() -> TypeExpr {
-    TypeExpr::Void
-}
-pub fn mk_type_infer() -> TypeExpr {
-    TypeExpr::Infer
-}
 
 // ─── AST constructors: other ────────────────────────────────────────────────
 
-pub fn mk_param(
-    name: String,
-    ty: Option<TypeExpr>,
-    mutable: bool,
-    default: Option<Expr>,
-) -> Param {
-    Param {
-        name,
-        ty,
-        mutable,
-        default,
-    }
-}
-
-pub fn mk_matcharm(pat: Pat, guard: Option<Expr>, body: Expr) -> MatchArm {
-    MatchArm { pat, guard, body }
-}
-
-pub fn mk_fielddef(name: String, ty: Option<TypeExpr>) -> FieldDef {
-    FieldDef { name, ty }
-}
-
-pub fn mk_variantdef(name: String, payload: Option<TypeExpr>) -> VariantDef {
-    VariantDef {
-        name,
-        fields: match payload {
-            None => vec![],
-            Some(ty) => vec![(None, ty)],
-        },
-    }
-}
 pub fn mk_variantdef_multi(name: String, fnames: Vec<String>, ftys: Vec<TypeExpr>) -> VariantDef {
     let fields = fnames
         .into_iter()
@@ -630,12 +366,6 @@ pub fn some_type(t: TypeExpr) -> Option<TypeExpr> {
     Some(t)
 }
 pub fn none_type() -> Option<TypeExpr> {
-    std::option::Option::None
-}
-pub fn some_pat(p: Pat) -> Option<Pat> {
-    Some(p)
-}
-pub fn none_pat() -> Option<Pat> {
     std::option::Option::None
 }
 pub fn some_str(s: String) -> Option<String> {
@@ -830,18 +560,6 @@ pub fn capture_attr_body(src: &str, start: usize) -> (String, usize) {
     (s.trim_end().to_string(), pos)
 }
 
-// ─── Outer-attribute constructors ───────────────────────────────────────────
-
-pub fn mk_stmt_bind_attrs(name: String, expr: Expr, attrs: Vec<String>) -> Stmt {
-    Stmt::Bind(name, expr, attrs)
-}
-pub fn mk_stmt_struct_def_attrs(name: String, fields: Vec<FieldDef>, attrs: Vec<String>) -> Stmt {
-    Stmt::StructDef(name, fields, attrs)
-}
-pub fn mk_stmt_enum_def_attrs(name: String, variants: Vec<VariantDef>, attrs: Vec<String>) -> Stmt {
-    Stmt::EnumDef(name, variants, attrs)
-}
-
 // ─── @! inner-attribute helpers ─────────────────────────────────────────────
 
 /// Peek at the kind of the token one position ahead (pos+1).
@@ -851,7 +569,7 @@ pub fn ps_peek_next_kind() -> String {
     }
     PARSE_TOKENS.with(|t| {
         let tokens = t.borrow();
-        let pos = PARSE_POS.with(|p| *p.borrow());
+        let pos = parse_pos_get() as usize;
         let next_idx = (pos + 1).min(tokens.len() - 1);
         token_kind_str(&tokens[next_idx].kind)
     })
@@ -994,10 +712,14 @@ pub fn ps_collect_outer_attr_body() -> String {
 /// This is the public API — called from main_imp.rs and resolver_imp.rs.
 /// Calls parse_program() which is defined in the .hom-compiled code below.
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, String> {
-    ps_init(tokens);
+    PARSE_TOKENS.with(|t| *t.borrow_mut() = tokens);
+    parse_pos_set(0);
+    parse_err_set(String::new());
+    gensym_counter_set(0);
     let program = parse_program();
-    if ps_has_err() {
-        Err(ps_get_err())
+    let err = parse_err_get();
+    if !err.is_empty() {
+        Err(err)
     } else {
         Ok(program)
     }

@@ -40,7 +40,9 @@
     clippy::needless_borrow,
     clippy::op_ref,
     clippy::iter_overeager_cloned,
-    clippy::missing_const_for_thread_local
+    clippy::missing_const_for_thread_local,
+    clippy::single_match,
+    noop_method_call
 )]
 
 // ── Homun runtime (builtin + std + re + heap) ──────────────────────────────

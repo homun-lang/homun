@@ -18,6 +18,74 @@
 // Public API:
 //   lex(source: str) -> Result<@[Token], str>
 
+// ─── Type definitions (migrated from lexer_imp.rs) ──────────────────────────
+
+@derive(Clone, Debug, PartialEq, Eq, Copy)
+Pos := struct { line: int, col: int }
+
+@derive(Clone, Debug)
+Token := struct { kind: TokenKind, pos: Pos }
+
+@derive(Clone, Debug, PartialEq)
+TokenKind := enum {
+  Int(int),
+  Float(float),
+  Bool(bool),
+  Str(str),
+  Char(char),
+  None,
+  Ident(str),
+  Use,
+  Struct,
+  Enum,
+  For,
+  In,
+  While,
+  Do,
+  If,
+  Else,
+  Match,
+  Break,
+  Continue,
+  And,
+  Or,
+  Not,
+  As,
+  Rec,
+  MutAssign,
+  DoubleColon,
+  Assign,
+  Arrow,
+  FatArrow,
+  Pipe,
+  Dot,
+  Plus,
+  Minus,
+  Star,
+  Slash,
+  Percent,
+  Eq,
+  Neq,
+  Lt,
+  Gt,
+  Le,
+  Ge,
+  Colon,
+  Comma,
+  Semi,
+  Underscore,
+  At,
+  Bang,
+  Question,
+  LParen,
+  RParen,
+  LBrace,
+  RBrace,
+  LBracket,
+  RBracket,
+  Eof,
+}
+
 // `use lexer_imp` sets has_rs_dep=true so homunc skips undefined-reference
 // checks for helper functions available at include!() time.
 use lexer_imp
@@ -160,18 +228,18 @@ ls_read_number := (state::LexState) -> Token {
   if (str_contains(raw, ".")) {
     ok, val := parse_float_result(raw)
     if (ok) {
-      make_token_float(val, pos)
+      Token { kind: TokenKind.Float(val), pos: pos }
     } else {
       state := ls_set_err(state, "Invalid float")
-      make_token("Eof", pos)
+      Token { kind: TokenKind.Eof, pos: pos }
     }
   } else {
     ok, val := parse_int_result(raw)
     if (ok) {
-      make_token_int(val, pos)
+      Token { kind: TokenKind.Int(val), pos: pos }
     } else {
       state := ls_set_err(state, "Invalid int")
-      make_token("Eof", pos)
+      Token { kind: TokenKind.Eof, pos: pos }
     }
   }
 }
@@ -226,7 +294,7 @@ lex := (source: str) -> Result<@[Token], str> {
           if (c == "\"") {
             s := ls_read_string(state)
             if (not ls_has_err(state)) {
-              tokens := tokens_push(tokens, make_token_str(s, pos))
+              tokens := tokens_push(tokens, Token { kind: TokenKind.Str(s), pos: pos })
             }
           } else {
 
@@ -255,19 +323,21 @@ lex := (source: str) -> Result<@[Token], str> {
                   // ── Multi-char operators (:=, ->, ->, ==, !=, <=, >=) ─────
                   multi_kind, multi_n := ls_try_multi_op(state)
                   if (multi_n > 0) {
-                    tokens := tokens_push(tokens, make_token(multi_kind, pos))
+                    tokens := tokens_push(tokens, Token { kind: multi_kind, pos: pos })
                     state  := ls_advance_col(state, multi_n)
                   } else {
 
                     // ── Single-char operators ─────────────────────────────────
-                    single_kind := ls_try_single_op(c)
-                    if (single_kind != "") {
-                      tokens := tokens_push(tokens, make_token(single_kind, pos))
-                      state  := ls_advance_col(state, 1)
-                    } else {
-                      err_line := ls_line(state)
-                      err_col  := ls_col(state)
-                      state := ls_set_err(state, "Unexpected character '${c}' at line ${err_line}, col ${err_col}")
+                    match ls_try_single_op(c) {
+                      Some(k) -> {
+                        tokens := tokens_push(tokens, Token { kind: k, pos: pos })
+                        state  := ls_advance_col(state, 1)
+                      }
+                      none -> {
+                        err_line := ls_line(state)
+                        err_col  := ls_col(state)
+                        state := ls_set_err(state, "Unexpected character '${c}' at line ${err_line}, col ${err_col}")
+                      }
                     }
 
                   }
@@ -283,7 +353,7 @@ lex := (source: str) -> Result<@[Token], str> {
   if (ls_has_err(state)) {
     Err(ls_get_err(state))
   } else {
-    tokens := tokens_push(tokens, make_token("Eof", ls_pos(state)))
+    tokens := tokens_push(tokens, Token { kind: TokenKind.Eof, pos: ls_pos(state) })
     Ok(tokens)
   }
 }

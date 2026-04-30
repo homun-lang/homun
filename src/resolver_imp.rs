@@ -1,60 +1,34 @@
-// resolver_imp.rs — Types and I/O helpers for resolver.hom.
+// resolver_imp.rs — I/O helpers for resolver.hom.
+//
+// Types ResolvedFile, Found, ResolverState are now defined in resolver.hom.
 //
 // Importing this file via `use resolver_imp` in resolver.hom sets has_rs_dep=true
 // in the homunc sema checker, disabling undefined-reference checks for dep/*
 // functions and runtime functions that are available at include!() time in
 // lib.rs but unknown to homunc's static checker.
 //
-// Type definitions:
-//   ResolvedFile, ResolvedProgram  — resolver output types (defined here)
+// Types (remain here):
+//   ResolvedProgram  — resolver output type
 //
-// Types:
-//   Found         — result of find_dep() with constructors and accessors
-//   ResolverState — plain struct passed by `::` (&mut) from resolver.hom
-//
-// Color is represented as String in .hom: "White" | "Gray" | "Black".
-//
-// I/O wrappers (String args/returns for .hom interop):
-//   read_file(path)         -> Result<String, String>
-//   file_exists(path)       -> bool
-//
-// Path helpers:
-//   path_join(dir, name)    -> String
-//   path_parent(path)       -> String
-//   path_canonicalize(path) -> Result<String, String>
-//
-// HashSet<String> helpers:
-//   hashset_new / hashset_insert / hashset_contains / hashset_extend /
-//   hashset_to_vec / hashset_from_vec
+// ResolvedProgram constructor and accessor:
+//   make_resolved_program / resolved_program_files
 //
 // ResolvedFile constructors and accessors:
 //   make_resolved_file / resolved_file_path / resolved_file_rust_code /
 //   resolved_file_exports
 //
-// ResolvedProgram constructor and accessor:
-//   make_resolved_program / resolved_program_files
+// ResolverState constructor:
+//   resolver_new
 //
-// ResolverState helpers:
-//   resolver_new / resolver_color_get / resolver_color_set /
-//   resolver_stack_push / resolver_stack_pop / resolver_stack_from_canonical /
-//   resolver_files_push / resolver_files_get / resolver_files_find_exports /
-//   resolver_hom_names_get / resolver_hom_names_insert /
-//   resolver_rs_content_get_map / resolver_rs_content_insert /
-//   resolver_skip_embed
+// HashSet<String> helpers:
+//   hashset_new / hashset_insert / hashset_contains / hashset_extend /
+//   hashset_to_vec / hashset_from_vec
 //
 // Rust-side helpers kept in Rust (PathBuf-heavy operations):
 //   find_dep(dir, name)               -> (String, String, String)
 //   expand_rs_file(path)              -> Result<String, String>
 //   expand_rs_includes(src, base_dir) -> Result<String, String>
 //   parse_include_line(line)          -> Option<String>
-
-/// A single compiled file's output plus its exported names.
-#[derive(Clone)]
-pub struct ResolvedFile {
-    pub path: std::path::PathBuf,
-    pub rust_code: String,
-    pub exports: std::collections::HashSet<String>,
-}
 
 /// Result of resolving an entire dependency graph.
 #[derive(Clone)]
@@ -73,74 +47,99 @@ pub type ResolveFileResult = Result<Vec<String>, String>;
 /// Return type of resolve / resolve_module: Ok(program) or Err(message).
 pub type ResolveProgramResult = Result<ResolvedProgram, String>;
 
-// ── Found — result of find_dep() ─────────────────────────────────────────────
+// ── ResolvedFile constructors and accessors ───────────────────────────────────
+// ResolvedFile is defined in resolver.hom; path is now String (not PathBuf).
 
-#[derive(Clone)]
-pub enum Found {
-    /// .hom file path
-    Hom(String),
-    /// .rs file path
-    Rs(String),
-}
-
-pub fn found_hom(path: String) -> Found {
-    Found::Hom(path)
-}
-
-pub fn found_rs(path: String) -> Found {
-    Found::Rs(path)
-}
-
-/// Returns "Hom" or "Rs".
-pub fn found_kind(f: Found) -> String {
-    match f {
-        Found::Hom(_) => "Hom".to_string(),
-        Found::Rs(_) => "Rs".to_string(),
+pub fn make_resolved_file(
+    path: String,
+    rust_code: String,
+    exports: Vec<String>,
+) -> ResolvedFile {
+    ResolvedFile {
+        path,
+        rust_code,
+        exports,
     }
 }
 
-/// Returns the file path from the Found value.
-pub fn found_path(f: Found) -> String {
-    match f {
-        Found::Hom(p) | Found::Rs(p) => p,
+pub fn resolved_file_path(f: ResolvedFile) -> String {
+    f.path.clone()
+}
+
+pub fn resolved_file_rust_code(f: ResolvedFile) -> String {
+    f.rust_code
+}
+
+pub fn resolved_file_exports(f: ResolvedFile) -> Vec<String> {
+    f.exports
+}
+
+// ── ResolvedProgram constructor and accessor ──────────────────────────────────
+
+pub fn make_resolved_program(files: Vec<ResolvedFile>) -> ResolvedProgram {
+    ResolvedProgram { files }
+}
+
+pub fn resolved_program_files(p: ResolvedProgram) -> Vec<ResolvedFile> {
+    p.files
+}
+
+// ── ResolverState constructor ────────────────────────────────────────────────
+// ResolverState is defined in resolver.hom; constructor stays here for
+// HashMap/HashSet/Vec initialization.
+
+pub fn resolver_new(skip_embed: bool) -> ResolverState {
+    ResolverState {
+        color: std::collections::HashMap::new(),
+        stack: Vec::new(),
+        files: Vec::new(),
+        resolved_hom_names: Vec::new(),
+        resolved_rs_content: std::collections::HashMap::new(),
+        skip_embed,
     }
 }
 
-// ── I/O helpers ───────────────────────────────────────────────────────────────
+// ── Vec field helpers ─────────────────────────────────────────────────────────
+// homun_concat(rs.field, ...) tries to move a field from &mut ResolverState.
+// Using named function calls causes homunc's codegen to add .clone() to every
+// argument, avoiding the move error.
 
-/// Read a file's contents as a String. Returns Err on failure.
-pub fn read_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| format!("Cannot read {}: {}", path, e))
+pub fn vec_push_str(mut v: Vec<String>, item: String) -> Vec<String> {
+    v.push(item);
+    v
 }
 
-/// True if the path exists on the filesystem.
-pub fn file_exists(path: String) -> bool {
-    std::path::Path::new(&path).exists()
+pub fn vec_pop_str(v: Vec<String>) -> Vec<String> {
+    v[..v.len() - 1].to_vec()
 }
 
-// ── Path helpers ──────────────────────────────────────────────────────────────
-
-/// Join a directory path and a name/subpath. Returns the joined path as String.
-pub fn path_join(dir: String, name: String) -> String {
-    std::path::Path::new(&dir)
-        .join(&name)
-        .to_string_lossy()
-        .into_owned()
+// ResolvedFile is defined by resolver.hom's generated code (forward ref — fine in Rust).
+pub fn files_push_rf(mut v: Vec<ResolvedFile>, f: ResolvedFile) -> Vec<ResolvedFile> {
+    v.push(f);
+    v
 }
 
-/// Return the parent directory of a path as String. Returns "" if none.
-pub fn path_parent(path: String) -> String {
-    std::path::Path::new(&path)
-        .parent()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_default()
+// ── String→String dict helpers ───────────────────────────────────────────────
+// Used from resolver.hom to work around homunc's dict-field index-assignment
+// limitation (dict[key] := val on struct fields generates wrong `as usize` code).
+
+/// Return the value for key in m, or default if key not found.
+pub fn str_dict_get(
+    m: std::collections::HashMap<String, String>,
+    key: String,
+    default: String,
+) -> String {
+    m.get(&key).cloned().unwrap_or(default)
 }
 
-/// Canonicalize a path (resolve symlinks, `..`, etc.). Returns Err if path doesn't exist.
-pub fn path_canonicalize(path: String) -> Result<String, String> {
-    std::fs::canonicalize(&path)
-        .map(|p| p.to_string_lossy().into_owned())
-        .map_err(|e| format!("Cannot resolve path {}: {}", path, e))
+/// Insert key→val into m and return the updated map.
+pub fn str_dict_set(
+    mut m: std::collections::HashMap<String, String>,
+    key: String,
+    val: String,
+) -> std::collections::HashMap<String, String> {
+    m.insert(key, val);
+    m
 }
 
 // ── HashSet<String> helpers ───────────────────────────────────────────────────
@@ -175,159 +174,6 @@ pub fn hashset_to_vec(s: std::collections::HashSet<String>) -> Vec<String> {
 
 pub fn hashset_from_vec(v: Vec<String>) -> std::collections::HashSet<String> {
     v.into_iter().collect()
-}
-
-// ── ResolvedFile constructors and accessors ───────────────────────────────────
-
-pub fn make_resolved_file(
-    path: String,
-    rust_code: String,
-    exports: std::collections::HashSet<String>,
-) -> ResolvedFile {
-    ResolvedFile {
-        path: std::path::PathBuf::from(path),
-        rust_code,
-        exports,
-    }
-}
-
-pub fn resolved_file_path(f: ResolvedFile) -> String {
-    f.path.to_string_lossy().into_owned()
-}
-
-pub fn resolved_file_rust_code(f: ResolvedFile) -> String {
-    f.rust_code
-}
-
-pub fn resolved_file_exports(f: ResolvedFile) -> std::collections::HashSet<String> {
-    f.exports
-}
-
-// ── ResolvedProgram constructor and accessor ──────────────────────────────────
-
-pub fn make_resolved_program(files: Vec<ResolvedFile>) -> ResolvedProgram {
-    ResolvedProgram { files }
-}
-
-pub fn resolved_program_files(p: ResolvedProgram) -> Vec<ResolvedFile> {
-    p.files
-}
-
-// ── ResolverState — plain mutable DFS state ─────────────────────────────────
-//
-// Color is a String: "White" (unvisited), "Gray" (in-progress), "Black" (done).
-// resolver.hom uses :: params (&mut) so no Rc<RefCell<>> needed.
-
-#[derive(Clone)]
-pub struct ResolverState {
-    color: std::collections::HashMap<String, String>,
-    stack: Vec<String>,
-    files: Vec<ResolvedFile>,
-    resolved_hom_names: std::collections::HashSet<String>,
-    resolved_rs_content: std::collections::HashMap<String, String>,
-    skip_embed: bool,
-}
-
-pub fn resolver_new(skip_embed: bool) -> ResolverState {
-    ResolverState {
-        color: std::collections::HashMap::new(),
-        stack: Vec::new(),
-        files: Vec::new(),
-        resolved_hom_names: std::collections::HashSet::new(),
-        resolved_rs_content: std::collections::HashMap::new(),
-        skip_embed,
-    }
-}
-
-/// Get the color for a canonical path. Returns "White" if not set.
-pub fn resolver_color_get(rs: ResolverState, path: String) -> String {
-    rs.color
-        .get(&path)
-        .cloned()
-        .unwrap_or_else(|| "White".to_string())
-}
-
-/// Set the color for a canonical path. Returns modified state.
-pub fn resolver_color_set(mut rs: ResolverState, path: String, color: String) -> ResolverState {
-    rs.color.insert(path, color);
-    rs
-}
-
-/// Push a canonical path onto the DFS stack. Returns modified state.
-pub fn resolver_stack_push(mut rs: ResolverState, path: String) -> ResolverState {
-    rs.stack.push(path);
-    rs
-}
-
-/// Pop the top of the DFS stack. Returns modified state.
-pub fn resolver_stack_pop(mut rs: ResolverState) -> ResolverState {
-    rs.stack.pop();
-    rs
-}
-
-/// Return stack entries from `canonical` onwards (for cycle description).
-pub fn resolver_stack_from_canonical(rs: ResolverState, canonical: String) -> Vec<String> {
-    rs.stack
-        .iter()
-        .skip_while(|p| **p != canonical)
-        .cloned()
-        .collect()
-}
-
-/// Append a ResolvedFile to the files list. Returns modified state.
-pub fn resolver_files_push(mut rs: ResolverState, f: ResolvedFile) -> ResolverState {
-    rs.files.push(f);
-    rs
-}
-
-/// Return a clone of the entire files list.
-pub fn resolver_files_get(rs: ResolverState) -> Vec<ResolvedFile> {
-    rs.files.clone()
-}
-
-/// Return the exports of the file with the given canonical path, or empty set.
-pub fn resolver_files_find_exports(
-    rs: ResolverState,
-    canonical: String,
-) -> std::collections::HashSet<String> {
-    rs.files
-        .iter()
-        .find(|f| f.path.to_string_lossy() == canonical.as_str())
-        .map(|f| f.exports.clone())
-        .unwrap_or_default()
-}
-
-/// Return a clone of the resolved_hom_names set.
-pub fn resolver_hom_names_get(rs: ResolverState) -> std::collections::HashSet<String> {
-    rs.resolved_hom_names.clone()
-}
-
-/// Insert a name into resolved_hom_names. Returns modified state.
-pub fn resolver_hom_names_insert(mut rs: ResolverState, name: String) -> ResolverState {
-    rs.resolved_hom_names.insert(name);
-    rs
-}
-
-/// Return a clone of the resolved_rs_content map.
-pub fn resolver_rs_content_get_map(
-    rs: ResolverState,
-) -> std::collections::HashMap<String, String> {
-    rs.resolved_rs_content.clone()
-}
-
-/// Insert a (name, content) pair into resolved_rs_content. Returns modified state.
-pub fn resolver_rs_content_insert(
-    mut rs: ResolverState,
-    name: String,
-    content: String,
-) -> ResolverState {
-    rs.resolved_rs_content.insert(name, content);
-    rs
-}
-
-/// Return the skip_embed flag.
-pub fn resolver_skip_embed(rs: ResolverState) -> bool {
-    rs.skip_embed
 }
 
 // ── find_dep — search for a dependency file (kept in Rust for PathBuf ops) ────
@@ -444,7 +290,7 @@ pub fn do_codegen(
     hom_names: std::collections::HashSet<String>,
     rs_content: std::collections::HashMap<String, String>,
 ) -> String {
-    crate::dep::register_known_dep_fns();
+    crate::codegen_hom::register_known_dep_fns();
     crate::codegen_hom::codegen_program_with_resolved(ast, hom_names, rs_content)
 }
 

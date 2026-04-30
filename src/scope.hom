@@ -1,0 +1,23 @@
+// scope.hom — Scope (bound-name tracking) as @[str] list.
+// All functions take and return owned values; codegen clones at call sites.
+// Backed by Vec<String> so @[], +, and `in` work natively.
+// scope_from_list lives in scope_imp.rs (needs generic for &str/String coercion).
+use scope_imp
+
+scope_new := () -> Scope { @[] }
+
+scope_contains := (sc: Scope, name: str) -> bool { name in sc }
+
+scope_insert := (sc: Scope, name: str) -> Scope { sc + @[name] }
+
+scope_clone := (sc: Scope) -> Scope { sc }
+
+scope_union := (a: Scope, b: Scope) -> Scope {
+  result ::= a
+  for x in b {
+    result := scope_insert(result, x)
+  }
+  result
+}
+
+scope_to_list := (sc: Scope) -> @[str] { sc }

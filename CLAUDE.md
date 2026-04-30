@@ -145,5 +145,6 @@ See `.claude/skills/claude-bot/` for the full skill, example scripts, and planni
 
 ## TODO
 
-1. `hom-std/heap.rs` still uses `Rc<RefCell<BinaryHeap<...>>>` so the runtime can hand out shared `&mut Heap` borrows under Homun's clone-everything codegen. Compiler internals are already `Rc<RefCell<>>`-free (v0.75 + `::` params). Decide whether to keep this runtime trick or replace with a different ownership story.
-2. Shrink the `_imp.rs` files further — most of `lexer_imp.rs` (605 lines) and `parser_imp.rs` (978 lines) is type defs + thread-local state + Rust-only helpers, but more dispatch logic could move into `.hom`.
+1. **Delete `src/dep/ast_access.rs` (~905 lines).** Original R2 ticket from the v0.83 reduction phase — too large for one autonomous run (timed out). Now that v0.82 multi-payload destructure + or-patterns are in, every `stmt_kind`/`stmt_bind_name`/etc. accessor call in `sema.hom`, `codegen.hom`, `resolver.hom` (~100 sites) can be replaced with direct `match` arms. Recommend splitting into 3 sub-tickets — one per consumer file — with `cargo test` between each.
+2. `hom-std/heap.rs` still uses `Rc<RefCell<BinaryHeap<...>>>` so the runtime can hand out shared `&mut Heap` borrows under Homun's clone-everything codegen. Compiler internals are already `Rc<RefCell<>>`-free (v0.75 + `::` params). Decide whether to keep this runtime trick or replace with a different ownership story.
+3. Shrink the `_imp.rs` files further — most of `lexer_imp.rs` (605 lines) and `parser_imp.rs` (978 lines) is type defs + thread-local state + Rust-only helpers, but more dispatch logic could move into `.hom`.

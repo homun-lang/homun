@@ -1,15 +1,50 @@
 // parser.hom — Recursive-descent Pratt parser → AST
 //
 // Uses:
-//   parser_imp — thread-local state (tokens, pos, err), token helpers,
-//                AST constructors, Option helpers, split_block
+//   parser_imp — token helpers (ps_peek_kind, ps_check, …), AST constructors,
+//                Option helpers, split_block
 //
-// State is managed via thread-local in parser_imp.rs. Parse functions
-// take no state arguments — they call ps_peek_kind(), ps_advance(), etc.
-// Error propagation: once ps_set_err() is called, all ops become no-ops.
+// Thread-local state (pos, err, gensym_counter) lives here as @thread_local
+// bindings; the thin wrappers (ps_advance, ps_save, …) are defined below.
+// PARSE_TOKENS stays in parser_imp.rs (concrete Vec<Token> type required).
 //
 // Public API:
 //   parse_program() -> @[Stmt]     — called from parser.rs wrapper
+
+// ─── Thread-local parser state ───────────────────────────────────────────────
+
+@thread_local
+parse_pos ::= 0
+
+@thread_local
+parse_err ::= ""
+
+@thread_local
+gensym_counter ::= 0
+
+// ─── State accessor wrappers ─────────────────────────────────────────────────
+
+ps_pos := () -> int { parse_pos }
+
+ps_advance := () -> _ {
+  if (parse_err == "") { parse_pos ::= parse_pos + 1 }
+}
+
+ps_save := () -> int { parse_pos }
+
+ps_restore := (p: int) -> _ { parse_pos ::= p }
+
+ps_has_err := () -> bool { parse_err != "" }
+
+ps_set_err := (msg: str) -> _ {
+  if (parse_err == "") { parse_err ::= msg }
+}
+
+ps_gensym := (prefix: str) -> str {
+  n := gensym_counter
+  gensym_counter ::= gensym_counter + 1
+  "${prefix}${n}"
+}
 
 use parser_imp
 
@@ -28,7 +63,7 @@ parse_program := () -> @[Stmt] {
         if (at_top) {
           ps_advance()
           body := ps_collect_attr_body()
-          push(stmts, mk_stmt_inner_attr(body))
+          push(stmts, Stmt.InnerAttr(body))
         } else {
           ps_set_err("@! inner attribute must appear before any declarations")
           done := true
@@ -76,7 +111,7 @@ parse_program := () -> @[Stmt] {
 parse_use := () -> Stmt {
   ps_expect("Use")
   path := parse_mod_path()
-  mk_stmt_use(path)
+  Stmt.Use(path)
 }
 
 parse_mod_path := () -> @[str] {
@@ -99,15 +134,15 @@ parse_top_bind := () -> Stmt {
   if (k == "Struct") {
     ps_advance()
     fields := parse_brace_fields()
-    mk_stmt_struct_def(name, fields)
+    Stmt.StructDef(name, fields, @[])
   } else {
     if (k == "Enum") {
       ps_advance()
       variants := parse_brace_variants()
-      mk_stmt_enum_def(name, variants)
+      Stmt.EnumDef(name, variants, @[])
     } else {
       rhs := parse_expr()
-      mk_stmt_bind(name, rhs)
+      Stmt.Bind(name, rhs, @[])
     }
   }
 }
@@ -118,22 +153,22 @@ parse_top_bind_attrs := (attrs: @[str]) -> Stmt {
   if ("thread_local" in attrs) {
     ps_expect("MutAssign")
     rhs := parse_expr()
-    => mk_stmt_thread_local(name, rhs)
+    => Stmt.ThreadLocal(name, rhs)
   }
   ps_expect("Assign")
   k := ps_peek_kind()
   if (k == "Struct") {
     ps_advance()
     fields := parse_brace_fields()
-    mk_stmt_struct_def_attrs(name, fields, attrs)
+    Stmt.StructDef(name, fields, attrs)
   } else {
     if (k == "Enum") {
       ps_advance()
       variants := parse_brace_variants()
-      mk_stmt_enum_def_attrs(name, variants, attrs)
+      Stmt.EnumDef(name, variants, attrs)
     } else {
       rhs := parse_expr()
-      mk_stmt_bind_attrs(name, rhs, attrs)
+      Stmt.Bind(name, rhs, attrs)
     }
   }
 }
@@ -153,7 +188,7 @@ parse_brace_fields := () -> @[FieldDef] {
         ps_expect("Colon")
         ty := parse_type_expr()
         ps_consume("Comma")
-        push(fields, mk_fielddef(name, some_type(ty)))
+        push(fields, FieldDef { name: name, ty: some_type(ty) })
       } else {
         done := true
       }
@@ -208,14 +243,14 @@ parse_brace_variants := () -> @[VariantDef] {
             ps_expect("RParen")
             ps_consume("Comma")
             if (len(all_tys) == 1) {
-              push(variants, mk_variantdef(name, some_type(all_tys[0])))
+              push(variants, VariantDef { name: name, fields: @[(none, all_tys[0])] })
             } else {
               push(variants, mk_variantdef_positional(name, all_tys))
             }
           }
         } else {
           ps_consume("Comma")
-          push(variants, mk_variantdef(name, none_type()))
+          push(variants, VariantDef { name: name, fields: @[] })
         }
       } else {
         done := true
@@ -239,7 +274,7 @@ parse_block_stmts := () -> @[Stmt] {
       if (k == "FatArrow") {
         ps_advance()
         e := parse_expr()
-        push(stmts, mk_stmt_expression(mk_expr_early_return(e)))
+        push(stmts, Stmt.Expression(mk_expr_early_return(e)))
       } else {
         if (k == "LBrace") {
           // Try struct destructure: {x: a, y: b} := expr
@@ -252,14 +287,14 @@ parse_block_stmts := () -> @[Stmt] {
             }
           } else {
             e := parse_expr()
-            push(stmts, mk_stmt_expression(e))
+            push(stmts, Stmt.Expression(e))
           }
         } else {
           if (k == "Ident") {
             push(stmts, parse_block_bind())
           } else {
             e := parse_expr()
-            push(stmts, mk_stmt_expression(e))
+            push(stmts, Stmt.Expression(e))
           }
         }
       }
@@ -340,11 +375,11 @@ try_parse_struct_destruct := () -> @[Stmt] {
   // Desugar: _sd0 := rhs; binding := _sd0.field; ...
   result := @[]
   tmp_name := ps_gensym("_sd")
-  push(result, mk_stmt_bind(tmp_name, rhs))
+  push(result, Stmt.Bind(tmp_name, rhs, @[]))
   i := 0
   while (i < len(fields)) {
-    field_expr := mk_expr_field(mk_expr_var(tmp_name), fields[i])
-    push(result, mk_stmt_bind(bindings[i], field_expr))
+    field_expr := mk_expr_field(Expr.Var(tmp_name), fields[i])
+    push(result, Stmt.Bind(bindings[i], field_expr, @[]))
     i := i + 1
   }
   result
@@ -355,7 +390,7 @@ parse_block_bind := () -> Stmt {
   k := ps_peek_kind()
   if (k != "Ident") {
     e := parse_expr()
-    => mk_stmt_expression(e)
+    => Stmt.Expression(e)
   }
   name := ps_peek_ident()
   ps_advance()
@@ -375,7 +410,7 @@ parse_block_bind := () -> Stmt {
         } else {
           ps_restore(saved)
           e := parse_expr()
-          => mk_stmt_expression(e)
+          => Stmt.Expression(e)
         }
       }
     }
@@ -383,29 +418,29 @@ parse_block_bind := () -> Stmt {
       ps_advance()
       rhs := parse_expr()
       pats := names_to_pats(names)
-      => mk_stmt_bind_pat(mk_pat_tuple(pats), rhs)
+      => Stmt.BindPat(Pat.Tuple(pats), rhs)
     }
     if (ps_check("MutAssign")) {
       ps_advance()
       rhs := parse_expr()
       pats := names_to_pats(names)
-      => mk_stmt_bind_pat_mut(mk_pat_tuple(pats), rhs)
+      => Stmt.BindPatMut(Pat.Tuple(pats), rhs)
     }
     ps_restore(saved)
     e := parse_expr()
-    => mk_stmt_expression(e)
+    => Stmt.Expression(e)
   }
 
   // Single bind: a := expr
   if (ps_check("Assign")) {
     ps_advance()
     rhs := parse_expr()
-    => mk_stmt_bind(name, rhs)
+    => Stmt.Bind(name, rhs, @[])
   }
   if (ps_check("MutAssign")) {
     ps_advance()
     rhs := parse_expr()
-    => mk_stmt_bind_mut(name, rhs)
+    => Stmt.BindMut(name, rhs)
   }
 
   // Lvalue: expr[idx] := rhs  or  expr.field := rhs
@@ -415,15 +450,15 @@ parse_block_bind := () -> Stmt {
     if (ps_check("Assign")) {
       ps_advance()
       rhs := parse_expr()
-      => mk_stmt_assign(lhs, rhs)
+      => Stmt.Assign(lhs, rhs)
     }
-    => mk_stmt_expression(lhs)
+    => Stmt.Expression(lhs)
   }
 
   // Fallback: expression
   ps_restore(saved)
   e := parse_expr()
-  mk_stmt_expression(e)
+  Stmt.Expression(e)
 }
 
 parse_block_stmts_braced := () -> @[Stmt] {
@@ -638,22 +673,22 @@ parse_atom := () -> Expr {
   if (k == "Int") {
     n := ps_peek_int()
     ps_advance()
-    => mk_expr_int(n)
+    => Expr.Int(n)
   }
   if (k == "Float") {
     f := ps_peek_float()
     ps_advance()
-    => mk_expr_float(f)
+    => Expr.Float(f)
   }
   if (k == "Bool") {
     b := ps_peek_bool()
     ps_advance()
-    => mk_expr_bool(b)
+    => Expr.Bool(b)
   }
   if (k == "Str") {
     s := ps_peek_str()
     ps_advance()
-    => mk_expr_str(s)
+    => Expr.Str(s)
   }
   if (k == "Char") {
     c := ps_peek_char()
@@ -662,7 +697,7 @@ parse_atom := () -> Expr {
   }
   if (k == "None") {
     ps_advance()
-    => mk_expr_none()
+    => Expr.None
   }
   if (k == "LParen") {
     => parse_lambda_or_paren()
@@ -687,7 +722,7 @@ parse_atom := () -> Expr {
   }
   if (k == "Continue") {
     ps_advance()
-    => mk_expr_continue()
+    => Expr.Continue
   }
   if (k == "LBrace") {
     => parse_inline_block()
@@ -697,22 +732,22 @@ parse_atom := () -> Expr {
   }
   if (k == "Underscore") {
     ps_advance()
-    => mk_expr_var("_")
+    => Expr.Var("_")
   }
   if (k == "Ident") {
     name := ps_peek_ident()
     ps_advance()
     if (ps_check("LBrace") and is_upper_first_str(name)) {
       fields := parse_struct_lit_fields()
-      => mk_expr_struct_lit(some_str(name), fields)
+      => Expr.Struct(some_str(name), fields)
     }
-    => mk_expr_var(name)
+    => Expr.Var(name)
   }
   // Unknown token
   if (not ps_has_err()) {
     ps_set_err("Unexpected token: ${k}")
   }
-  mk_expr_none()
+  Expr.None
 }
 
 // ─── Lambda vs parenthesised expr ───────────────────────────────────────────
@@ -734,7 +769,7 @@ parse_lambda_or_paren := () -> Expr {
       ps_expect("RParen")
       items := @[e]
       items := vec_concat_exprs(items, rest)
-      mk_expr_tuple(items)
+      Expr.Tuple(items)
     } else {
       ps_expect("RParen")
       e
@@ -748,7 +783,7 @@ try_parse_lambda := () -> Expr {
   ps_expect("RParen")
   if (not ps_check("Arrow")) {
     ps_set_err("not a lambda")
-    => mk_expr_none()
+    => Expr.None
   }
   ps_advance()
   // Return type
@@ -763,7 +798,7 @@ try_parse_lambda := () -> Expr {
       some_type(parse_type_expr())
     }
   }
-  void_mark := if (rk == "Underscore") { some_type(mk_type_void()) } else { none_type() }
+  void_mark := if (rk == "Underscore") { some_type(TypeExpr.Void) } else { none_type() }
   stmts := parse_block_stmts_braced()
   ss, fe := split_block(stmts)
   mk_expr_lambda(params, ret_ty, void_mark, ss, fe)
@@ -788,26 +823,26 @@ parse_one_param := () -> Param {
   k := ps_peek_kind()
   if (k == "Underscore") {
     ps_advance()
-    => mk_param("_", none_type(), false, none_expr())
+    => Param { name: "_", ty: none_type(), mutable: false, default: none_expr() }
   }
   name := ps_advance_ident()
   // name::Type — mutable param
   if (ps_consume("DoubleColon")) {
     ty := parse_type_expr()
-    => mk_param(name, some_type(ty), true, none_expr())
+    => Param { name: name, ty: some_type(ty), mutable: true, default: none_expr() }
   }
   // name:=expr — default param
   if (ps_consume("Assign")) {
     default := parse_expr()
-    => mk_param(name, none_type(), false, some_expr(default))
+    => Param { name: name, ty: none_type(), mutable: false, default: some_expr(default) }
   }
   // name:Type — typed param
   if (ps_consume("Colon")) {
     ty := parse_type_expr()
-    => mk_param(name, some_type(ty), false, none_expr())
+    => Param { name: name, ty: some_type(ty), mutable: false, default: none_expr() }
   }
   // name — untyped param
-  mk_param(name, none_type(), false, none_expr())
+  Param { name: name, ty: none_type(), mutable: false, default: none_expr() }
 }
 
 parse_arg_list := () -> @[Expr] {
@@ -841,7 +876,7 @@ parse_collection := () -> Expr {
   else { if (k == "LBrace") { parse_dict_or_set() }
   else {
     ps_set_err("Expected [ or { after @")
-    mk_expr_none()
+    Expr.None
   }}
 }
 
@@ -849,11 +884,11 @@ parse_list := () -> Expr {
   ps_expect("LBracket")
   if (ps_check("RBracket")) {
     ps_advance()
-    mk_expr_list(@[])
+    Expr.List(@[])
   } else {
     items := parse_expr_sep("RBracket")
     ps_expect("RBracket")
-    mk_expr_list(items)
+    Expr.List(items)
   }
 }
 
@@ -862,7 +897,7 @@ parse_dict_or_set := () -> Expr {
   if (ps_check("RBrace")) {
     // @{} — empty dict (backward compat)
     ps_advance()
-    mk_expr_dict(new_expr_pairs())
+    Expr.Dict(new_expr_pairs())
   } else {
     // Parse first expression, then peek: Colon → dict, Comma/RBrace → set
     first := parse_expr()
@@ -880,7 +915,7 @@ parse_dict_or_set := () -> Expr {
         pairs ::= push_expr_pair(pairs, k2, v2)
       }
       ps_expect("RBrace")
-      mk_expr_dict(pairs)
+      Expr.Dict(pairs)
     } else {
       // Set: @{a, b, ...}
       items := @[first]
@@ -889,7 +924,7 @@ parse_dict_or_set := () -> Expr {
         push(items, parse_expr())
       }
       ps_expect("RBrace")
-      mk_expr_set(items)
+      Expr.Set(items)
     }
   }
 }
@@ -960,7 +995,7 @@ parse_match_arm := () -> MatchArm {
       ps_advance()
       push(pats, parse_pat())
     }
-    mk_pat_or(pats)
+    Pat.Or(pats)
   } else {
     first_pat
   }
@@ -972,7 +1007,7 @@ parse_match_arm := () -> MatchArm {
   }
   ps_expect("Arrow")
   body := parse_expr()
-  mk_matcharm(pat, guard, body)
+  MatchArm { pat: pat, guard: guard, body: body }
 }
 
 parse_more_pats := () -> @[Pat] {
@@ -988,11 +1023,11 @@ parse_pat := () -> Pat {
   k := ps_peek_kind()
   if (k == "Underscore") {
     ps_advance()
-    => mk_pat_wild()
+    => Pat.Wild
   }
   if (k == "None") {
     ps_advance()
-    => mk_pat_none()
+    => Pat.None
   }
   if (k == "Ident") {
     name := ps_peek_ident()
@@ -1005,7 +1040,7 @@ parse_pat := () -> Pat {
         ps_advance()
         if (ps_check("RParen")) {
           ps_advance()
-          => mk_pat_enum(full, none_pat())
+          => Pat.Enum(full, @[])
         }
         epats := @[parse_pat()]
         while (ps_consume("Comma")) {
@@ -1014,17 +1049,17 @@ parse_pat := () -> Pat {
         }
         ps_expect("RParen")
         if (len(epats) == 1) {
-          => mk_pat_enum(full, some_pat(epats[0]))
+          => Pat.Enum(full, @[epats[0]])
         }
-        => mk_pat_enum_multi(full, epats)
+        => Pat.Enum(full, epats)
       }
-      => mk_pat_enum(full, none_pat())
+      => Pat.Enum(full, @[])
     }
     if (ps_check("LParen") and ps_same_line()) {
       ps_advance()
       if (ps_check("RParen")) {
         ps_advance()
-        => mk_pat_enum(name, none_pat())
+        => Pat.Enum(name, @[])
       }
       epats := @[parse_pat()]
       while (ps_consume("Comma")) {
@@ -1033,36 +1068,36 @@ parse_pat := () -> Pat {
       }
       ps_expect("RParen")
       if (len(epats) == 1) {
-        => mk_pat_enum(name, some_pat(epats[0]))
+        => Pat.Enum(name, @[epats[0]])
       }
-      => mk_pat_enum_multi(name, epats)
+      => Pat.Enum(name, epats)
     }
-    => mk_pat_var(name)
+    => Pat.Var(name)
   }
   if (k == "Int") {
     n := ps_peek_int()
     ps_advance()
-    => mk_pat_lit(mk_expr_int(n))
+    => Pat.Lit(Expr.Int(n))
   }
   if (k == "Float") {
     f := ps_peek_float()
     ps_advance()
-    => mk_pat_lit(mk_expr_float(f))
+    => Pat.Lit(Expr.Float(f))
   }
   if (k == "Bool") {
     b := ps_peek_bool()
     ps_advance()
-    => mk_pat_lit(mk_expr_bool(b))
+    => Pat.Lit(Expr.Bool(b))
   }
   if (k == "Str") {
     s := ps_peek_str()
     ps_advance()
-    => mk_pat_lit(mk_expr_str(s))
+    => Pat.Lit(Expr.Str(s))
   }
   if (k == "Char") {
     c := ps_peek_char()
     ps_advance()
-    => mk_pat_lit(mk_expr_char_from_str(c))
+    => Pat.Lit(mk_expr_char_from_str(c))
   }
   if (k == "Minus") {
     ps_advance()
@@ -1070,21 +1105,21 @@ parse_pat := () -> Pat {
     if (nk == "Int") {
       n := ps_peek_int()
       ps_advance()
-      => mk_pat_lit(mk_expr_int(neg_i64(n)))
+      => Pat.Lit(Expr.Int(neg_i64(n)))
     }
     if (nk == "Float") {
       f := ps_peek_float()
       ps_advance()
-      => mk_pat_lit(mk_expr_float(neg_f64(f)))
+      => Pat.Lit(Expr.Float(neg_f64(f)))
     }
     ps_set_err("Expected number after '-' in pattern")
-    => mk_pat_wild()
+    => Pat.Wild
   }
   if (k == "LParen") {
     ps_advance()
     if (ps_check("RParen")) {
       ps_advance()
-      => mk_pat_tuple(@[])
+      => Pat.Tuple(@[])
     }
     pats := @[parse_pat()]
     while (ps_consume("Comma")) {
@@ -1094,12 +1129,12 @@ parse_pat := () -> Pat {
       push(pats, parse_pat())
     }
     ps_expect("RParen")
-    => mk_pat_tuple(pats)
+    => Pat.Tuple(pats)
   }
   if (not ps_has_err()) {
     ps_set_err("Expected pattern, got ${k}")
   }
-  mk_pat_wild()
+  Pat.Wild
 }
 
 // ─── Loops ──────────────────────────────────────────────────────────────────
@@ -1168,7 +1203,7 @@ parse_type_expr := () -> TypeExpr {
       ps_expect("RParen")
       => mk_type_set(ty)
     }
-    => mk_type_infer()
+    => TypeExpr.Infer
   }
   if (k == "LParen") {
     ps_advance()
@@ -1177,11 +1212,11 @@ parse_type_expr := () -> TypeExpr {
       push(types, parse_type_expr())
     }
     ps_expect("RParen")
-    => mk_type_tuple(types)
+    => TypeExpr.Tuple(types)
   }
   if (k == "Underscore") {
     ps_advance()
-    => mk_type_void()
+    => TypeExpr.Void
   }
   if (k == "Ident") {
     name := ps_peek_ident()
@@ -1193,11 +1228,11 @@ parse_type_expr := () -> TypeExpr {
         push(params, parse_type_expr())
       }
       ps_expect("Gt")
-      => mk_type_generic(name, params)
+      => TypeExpr.Generic(name, params)
     }
-    => mk_type_name(name)
+    => TypeExpr.Name(name)
   }
-  mk_type_infer()
+  TypeExpr.Infer
 }
 
 // ─── Generic lambda ──────────────────────────────────────────────────────────
@@ -1212,7 +1247,7 @@ parse_generic_lambda := () -> Expr {
   ps_expect("RParen")
   if (not ps_check("Arrow")) {
     ps_set_err("expected -> after generic lambda params")
-    => mk_expr_none()
+    => Expr.None
   }
   ps_advance()
   rk := ps_peek_kind()
@@ -1226,7 +1261,7 @@ parse_generic_lambda := () -> Expr {
       some_type(parse_type_expr())
     }
   }
-  void_mark := if (rk == "Underscore") { some_type(mk_type_void()) } else { none_type() }
+  void_mark := if (rk == "Underscore") { some_type(TypeExpr.Void) } else { none_type() }
   stmts := parse_block_stmts_braced()
   ss, fe := split_block(stmts)
   mk_expr_lambda_generics(generics, params, ret_ty, void_mark, ss, fe)

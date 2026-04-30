@@ -5,34 +5,21 @@
 // functions and runtime functions that are available at include!() time in
 // lib.rs but unknown to homunc's static checker.
 //
-// Type definitions:
-//   Pos, Token, TokenKind   — lexer types (defined here)
+// Pos, Token, TokenKind are now defined in lexer.hom (migrated by R3).
 //
 // Pos constructors / accessors:
-//   make_pos(line, col) -> Pos          — i64 args (Homun int → usize cast)
+//   make_pos(line, col) -> Pos          — i64 args (Homun int → i32 cast)
 //   pos_line(p) -> i64
 //   pos_col(p) -> i64
 //   pos_inc_col(p) -> Pos               — advance col by 1
 //   pos_add_col(p, n) -> Pos            — advance col by n
 //   pos_newline(p) -> Pos               — increment line, reset col to 1
 //
-// Token constructors (value-carrying variants):
-//   make_token_int(val, pos) -> Token
-//   make_token_float(val, pos) -> Token
-//   make_token_bool(val, pos) -> Token
-//   make_token_str(val, pos) -> Token
-//   make_token_char(val, pos) -> Token
-//   make_token_ident(val, pos) -> Token
-//   make_token_none(pos) -> Token
+// Token char helper:
+//   make_token_char_from_str(val, pos) -> Token  — String → char payload
 //
-// Token constructor (parameterless variants via string dispatch):
-//   make_token(kind, pos) -> Token
-//     Accepts: "Use","Struct","Enum","For","In","While","Do","If","Else",
-//              "Match","Break","Continue","And","Or","Not","As","Rec",
-//              "MutAssign","DoubleColon","Assign","Arrow","FatArrow","Pipe","Dot","Plus","Minus",
-//              "Star","Slash","Percent","Eq","Neq","Lt","Gt","Le","Ge",
-//              "Colon","Comma","Semi","Underscore","At","Question",
-//              "LParen","RParen","LBrace","RBrace","LBracket","RBracket","Eof"
+// Keyword dispatch:
+//   ls_keyword_token(s, pos) -> Token
 //
 // Char-testing helpers:
 //   is_alpha(c) -> bool
@@ -40,92 +27,20 @@
 //   is_alnum(c) -> bool      — alphanumeric or '_'
 //   is_whitespace(c) -> bool
 //   is_newline(c) -> bool
+//
+// Operator dispatch (now return TokenKind / Option<TokenKind>):
+//   ls_try_multi_op(s) -> (TokenKind, i64)   — (Eof, 0) = no match
+//   ls_try_single_op(c) -> Option<TokenKind>
 
-/// Lexer: type definitions for Homun tokens.
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Pos {
-    pub line: usize,
-    pub col: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub pos: Pos,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TokenKind {
-    // Literals
-    Int(i64),
-    Float(f64),
-    Bool(bool),
-    Str(String),
-    Char(char),
-    None,
-    // Identifiers & Keywords
-    Ident(String),
-    Use,
-    Struct,
-    Enum,
-    For,
-    In,
-    While,
-    Do,
-    If,
-    Else,
-    Match,
-    Break,
-    Continue,
-    And,
-    Or,
-    Not,
-    As,
-    Rec,
-    // Operators
-    MutAssign,   // ::=
-    DoubleColon, // ::
-    Assign,      // :=
-    Arrow,     // ->
-    FatArrow,  // =>
-    Pipe,      // |
-    Dot,
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    Percent,
-    Eq,  // ==
-    Neq, // !=
-    Lt,
-    Gt,
-    Le, // <=
-    Ge, // >=
-    Colon,
-    Comma,
-    Semi,
-    Underscore,
-    At,
-    Bang,
-    Question,
-    // Delimiters
-    LParen,
-    RParen,
-    LBrace,
-    RBrace,
-    LBracket,
-    RBracket,
-    Eof,
-}
+// Lexer: helper functions for Homun tokens.
 
 // ── Pos constructors / accessors ─────────────────────────────────────────────
 
-/// Create a Pos from (line, col).  Homun int is i64; cast to usize here.
+/// Create a Pos from (line, col).  Homun int is i64; cast to i32 here.
 pub fn make_pos(line: i64, col: i64) -> Pos {
     Pos {
-        line: line as usize,
-        col: col as usize,
+        line: line as i32,
+        col: col as i32,
     }
 }
 
@@ -151,7 +66,7 @@ pub fn pos_inc_col(p: Pos) -> Pos {
 pub fn pos_add_col(p: Pos, n: i64) -> Pos {
     Pos {
         line: p.line,
-        col: p.col + n as usize,
+        col: p.col + n as i32,
     }
 }
 
@@ -163,119 +78,15 @@ pub fn pos_newline(p: Pos) -> Pos {
     }
 }
 
-// ── Value-carrying token constructors ────────────────────────────────────────
+// ── Token char helper ─────────────────────────────────────────────────────────
 
-pub fn make_token_int(val: i64, pos: Pos) -> Token {
+/// Convert a 1-char String to a Token with Char kind.
+/// Used by lexer.hom which works with String, not char.
+pub fn make_token_char_from_str(val: String, pos: Pos) -> Token {
     Token {
-        kind: TokenKind::Int(val),
+        kind: TokenKind::Char(val.chars().next().unwrap_or('\0')),
         pos,
     }
-}
-
-pub fn make_token_float(val: f64, pos: Pos) -> Token {
-    Token {
-        kind: TokenKind::Float(val),
-        pos,
-    }
-}
-
-pub fn make_token_bool(val: bool, pos: Pos) -> Token {
-    Token {
-        kind: TokenKind::Bool(val),
-        pos,
-    }
-}
-
-pub fn make_token_str(val: String, pos: Pos) -> Token {
-    Token {
-        kind: TokenKind::Str(val),
-        pos,
-    }
-}
-
-pub fn make_token_char(val: char, pos: Pos) -> Token {
-    Token {
-        kind: TokenKind::Char(val),
-        pos,
-    }
-}
-
-pub fn make_token_ident(val: String, pos: Pos) -> Token {
-    Token {
-        kind: TokenKind::Ident(val),
-        pos,
-    }
-}
-
-pub fn make_token_none(pos: Pos) -> Token {
-    Token {
-        kind: TokenKind::None,
-        pos,
-    }
-}
-
-// ── Parameterless-variant constructor (string dispatch) ───────────────────────
-
-/// Construct a Token whose kind carries no payload.
-/// Pass the variant name as a string (e.g. "Assign", "LParen", "Eof").
-/// Panics on unknown kind name — intended for use with literal constants only.
-pub fn make_token(kind: String, pos: Pos) -> Token {
-    let k = match kind.as_str() {
-        // Keywords
-        "Use" => TokenKind::Use,
-        "Struct" => TokenKind::Struct,
-        "Enum" => TokenKind::Enum,
-        "For" => TokenKind::For,
-        "In" => TokenKind::In,
-        "While" => TokenKind::While,
-        "Do" => TokenKind::Do,
-        "If" => TokenKind::If,
-        "Else" => TokenKind::Else,
-        "Match" => TokenKind::Match,
-        "Break" => TokenKind::Break,
-        "Continue" => TokenKind::Continue,
-        "And" => TokenKind::And,
-        "Or" => TokenKind::Or,
-        "Not" => TokenKind::Not,
-        "As" => TokenKind::As,
-        "Rec" => TokenKind::Rec,
-        // Operators
-        "MutAssign" => TokenKind::MutAssign,
-        "DoubleColon" => TokenKind::DoubleColon,
-        "Assign" => TokenKind::Assign,
-        "Arrow" => TokenKind::Arrow,
-        "FatArrow" => TokenKind::FatArrow,
-        "Pipe" => TokenKind::Pipe,
-        "Dot" => TokenKind::Dot,
-        "Plus" => TokenKind::Plus,
-        "Minus" => TokenKind::Minus,
-        "Star" => TokenKind::Star,
-        "Slash" => TokenKind::Slash,
-        "Percent" => TokenKind::Percent,
-        "Eq" => TokenKind::Eq,
-        "Neq" => TokenKind::Neq,
-        "Lt" => TokenKind::Lt,
-        "Gt" => TokenKind::Gt,
-        "Le" => TokenKind::Le,
-        "Ge" => TokenKind::Ge,
-        "Colon" => TokenKind::Colon,
-        "Comma" => TokenKind::Comma,
-        "Semi" => TokenKind::Semi,
-        "Underscore" => TokenKind::Underscore,
-        "At" => TokenKind::At,
-        "Bang" => TokenKind::Bang,
-        "Question" => TokenKind::Question,
-        // Delimiters
-        "LParen" => TokenKind::LParen,
-        "RParen" => TokenKind::RParen,
-        "LBrace" => TokenKind::LBrace,
-        "RBrace" => TokenKind::RBrace,
-        "LBracket" => TokenKind::LBracket,
-        "RBracket" => TokenKind::RBracket,
-        "Eof" => TokenKind::Eof,
-        _ => panic!("make_token: unknown parameterless kind '{}'", kind),
-    };
-    Token { kind: k, pos }
 }
 
 // ── Char-testing helpers ──────────────────────────────────────────────────────
@@ -364,8 +175,8 @@ pub fn ls_col(s: LexState) -> i64 {
 
 pub fn ls_pos(s: LexState) -> Pos {
     Pos {
-        line: s.line as usize,
-        col: s.col as usize,
+        line: s.line as i32,
+        col: s.col as i32,
     }
 }
 
@@ -450,58 +261,58 @@ fn ls_keyword(s: String) -> TokenKind {
 // ── Operator dispatch helpers ─────────────────────────────────────────────────
 
 /// Try to lex a two-character operator at the current position.
-/// Returns `(kind_name, chars_consumed)` or `("", 0)` if none matched.
-pub fn ls_try_multi_op(s: LexState) -> (String, i64) {
+/// Returns `(kind, chars_consumed)` or `(Eof, 0)` if none matched.
+pub fn ls_try_multi_op(s: LexState) -> (TokenKind, i64) {
     let i = s.i as usize;
     let c = s.chars.get(i).copied().unwrap_or('\0');
     let c1 = s.chars.get(i + 1).copied().unwrap_or('\0');
     let c2 = s.chars.get(i + 2).copied().unwrap_or('\0');
     if (c, c1, c2) == (':', ':', '=') {
-        return ("MutAssign".to_string(), 3);
+        return (TokenKind::MutAssign, 3);
     }
     if (c, c1) == (':', ':') {
-        return ("DoubleColon".to_string(), 2);
+        return (TokenKind::DoubleColon, 2);
     }
     match (c, c1) {
-        (':', '=') => ("Assign".to_string(), 2),
-        ('-', '>') => ("Arrow".to_string(), 2),
-        ('=', '>') => ("FatArrow".to_string(), 2),
-        ('=', '=') => ("Eq".to_string(), 2),
-        ('!', '=') => ("Neq".to_string(), 2),
-        ('<', '=') => ("Le".to_string(), 2),
-        ('>', '=') => ("Ge".to_string(), 2),
-        _ => (String::new(), 0),
+        (':', '=') => (TokenKind::Assign, 2),
+        ('-', '>') => (TokenKind::Arrow, 2),
+        ('=', '>') => (TokenKind::FatArrow, 2),
+        ('=', '=') => (TokenKind::Eq, 2),
+        ('!', '=') => (TokenKind::Neq, 2),
+        ('<', '=') => (TokenKind::Le, 2),
+        ('>', '=') => (TokenKind::Ge, 2),
+        _ => (TokenKind::Eof, 0),
     }
 }
 
 /// Try to lex a single-character operator/delimiter.
 /// Takes a 1-char String (as returned by ls_cur) for .hom interop.
-/// Returns the kind name string, or `""` if the character is unknown.
-pub fn ls_try_single_op(c: String) -> String {
+/// Returns Some(kind) or None if the character is unknown.
+pub fn ls_try_single_op(c: String) -> Option<TokenKind> {
     match c.as_str() {
-        "|" => "Pipe".to_string(),
-        "." => "Dot".to_string(),
-        "+" => "Plus".to_string(),
-        "-" => "Minus".to_string(),
-        "*" => "Star".to_string(),
-        "/" => "Slash".to_string(),
-        "%" => "Percent".to_string(),
-        "<" => "Lt".to_string(),
-        ">" => "Gt".to_string(),
-        ":" => "Colon".to_string(),
-        "," => "Comma".to_string(),
-        ";" => "Semi".to_string(),
-        "_" => "Underscore".to_string(),
-        "@" => "At".to_string(),
-        "!" => "Bang".to_string(),
-        "?" => "Question".to_string(),
-        "(" => "LParen".to_string(),
-        ")" => "RParen".to_string(),
-        "{" => "LBrace".to_string(),
-        "}" => "RBrace".to_string(),
-        "[" => "LBracket".to_string(),
-        "]" => "RBracket".to_string(),
-        _ => String::new(),
+        "|" => Some(TokenKind::Pipe),
+        "." => Some(TokenKind::Dot),
+        "+" => Some(TokenKind::Plus),
+        "-" => Some(TokenKind::Minus),
+        "*" => Some(TokenKind::Star),
+        "/" => Some(TokenKind::Slash),
+        "%" => Some(TokenKind::Percent),
+        "<" => Some(TokenKind::Lt),
+        ">" => Some(TokenKind::Gt),
+        ":" => Some(TokenKind::Colon),
+        "," => Some(TokenKind::Comma),
+        ";" => Some(TokenKind::Semi),
+        "_" => Some(TokenKind::Underscore),
+        "@" => Some(TokenKind::At),
+        "!" => Some(TokenKind::Bang),
+        "?" => Some(TokenKind::Question),
+        "(" => Some(TokenKind::LParen),
+        ")" => Some(TokenKind::RParen),
+        "{" => Some(TokenKind::LBrace),
+        "}" => Some(TokenKind::RBrace),
+        "[" => Some(TokenKind::LBracket),
+        "]" => Some(TokenKind::RBracket),
+        _ => None,
     }
 }
 
@@ -553,18 +364,17 @@ pub fn str_contains(s: String, ch: String) -> bool {
     s.contains(&ch)
 }
 
-/// Parse a string as an integer. Returns (true, value) on success, (false, 0) on failure.
-/// Error message returned separately via parse_number_err.
-pub fn parse_int_result(s: String) -> (bool, i64) {
-    match s.parse::<i64>() {
+/// Parse a string as an integer (i32). Returns (true, value) on success, (false, 0) on failure.
+pub fn parse_int_result(s: String) -> (bool, i32) {
+    match s.parse::<i32>() {
         Ok(v) => (true, v),
         Err(_) => (false, 0),
     }
 }
 
-/// Parse a string as a float. Returns (true, value) on success, (false, 0.0) on failure.
-pub fn parse_float_result(s: String) -> (bool, f64) {
-    match s.parse::<f64>() {
+/// Parse a string as a float (f32). Returns (true, value) on success, (false, 0.0) on failure.
+pub fn parse_float_result(s: String) -> (bool, f32) {
+    match s.parse::<f32>() {
         Ok(v) => (true, v),
         Err(_) => (false, 0.0),
     }
@@ -581,15 +391,6 @@ pub fn unescape_char(c: String) -> String {
         "'" => "'".to_string(),
         "0" => "\0".to_string(),
         _ => c,
-    }
-}
-
-/// Convert a 1-char String to a Token with CharLit kind.
-/// Used by lexer.hom which works with String, not char.
-pub fn make_token_char_from_str(val: String, pos: Pos) -> Token {
-    Token {
-        kind: TokenKind::Char(val.chars().next().unwrap_or('\0')),
-        pos,
     }
 }
 

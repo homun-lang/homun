@@ -7,7 +7,8 @@
 // If 2+ match → compile error (ambiguous).
 //
 // Uses:
-//   resolver_imp — ResolverState, Found helpers, I/O wrappers, pipeline wrappers
+//   resolver_imp — I/O wrappers, pipeline wrappers, hashset_* helpers,
+//                  str_dict_get, str_dict_set
 //   dep (via lib.rs) — stmt_kind, stmt_use_path, stmt_bind_name
 //
 // Public API:
@@ -15,9 +16,29 @@
 //   resolve_module(entry_path: str) -> Result<ResolvedProgram, str>
 
 // `use resolver_imp` sets has_rs_dep=true so homunc skips undefined-reference
-// checks for dep/ functions (stmt_kind, hashset_*, join, len, etc.) and runtime
-// functions that are available at include!() time in lib.rs.
+// checks for dep/ functions (stmt_kind, hashset_*, join, len, etc.) and
+// runtime functions that are available at include!() time in lib.rs.
 use resolver_imp
+
+@derive(Clone)
+ResolvedFile := struct {
+  path: str,
+  rust_code: str,
+  exports: @[str],
+}
+
+@derive(Clone)
+Found := enum { Hom(str)  Rs(str) }
+
+@derive(Clone)
+ResolverState := struct {
+  color: @{str: str},
+  stack: @[str],
+  files: @[ResolvedFile],
+  resolved_hom_names: @[str],
+  resolved_rs_content: @{str: str},
+  skip_embed: bool,
+}
 
 
 // ─── resolve_file ─────────────────────────────────────────────────────────────
@@ -27,22 +48,36 @@ use resolver_imp
 
 resolve_file := (rs::ResolverState, path: str) -> ResolveFileResult {
   canonical := path_canonicalize(path)?
-  color := resolver_color_get(rs, canonical)
+  color := str_dict_get(rs.color, canonical, "White")
 
   if (color == "Black") {
-    exports_set := resolver_files_find_exports(rs, canonical)
-    Ok(hashset_to_vec(exports_set))
+    exports_list := @[]
+    fi := 0
+    while (fi < len(rs.files)) {
+      if (rs.files[fi].path == canonical) {
+        exports_list := rs.files[fi].exports
+      }
+      fi := fi + 1
+    }
+    Ok(exports_list)
   } else {
     if (color == "Gray") {
-      parts := resolver_stack_from_canonical(rs, canonical)
+      parts := @[]
+      found_in_stack := false
+      si := 0
+      while (si < len(rs.stack)) {
+        if (rs.stack[si] == canonical) { found_in_stack := true }
+        if (found_in_stack) { parts := parts + @[rs.stack[si]] }
+        si := si + 1
+      }
       parts_str := join(parts, " -> ")
       Err("Import cycle detected: ${parts_str} -> ${canonical}")
     } else {
       // White — first visit to this file
-      rs := resolver_color_set(rs, canonical, "Gray")
-      rs := resolver_stack_push(rs, canonical)
+      rs.color := str_dict_set(rs.color, canonical, "Gray")
+      rs.stack := vec_push_str(rs.stack, canonical)
 
-      source := read_file(canonical)?
+      source := fs_read(canonical)?
       tokens := do_lex(source)?
       ast := do_parse(tokens)?
 
@@ -66,27 +101,27 @@ resolve_file := (rs::ResolverState, path: str) -> ResolveFileResult {
             if (fd_kind == "Hom") {
               dep_exports := resolve_file(rs, fd_path)?
               imported_names := hashset_extend(imported_names, hashset_from_vec(dep_exports))
-              rs := resolver_hom_names_insert(rs, dep_name)
+              rs.resolved_hom_names := vec_push_str(rs.resolved_hom_names, dep_name)
             }
 
             if (fd_kind == "Rs") {
               rs_file_content := expand_rs_file(fd_path)?
-              rs := resolver_rs_content_insert(rs, dep_name, rs_file_content)
+              rs.resolved_rs_content := str_dict_set(rs.resolved_rs_content, dep_name, rs_file_content)
               has_rs_dep := true
             }
 
             if (fd_kind == "None") {
-              skip_embed := resolver_skip_embed(rs)
+              skip_embed := rs.skip_embed
               emb_opt := do_embedded_rs(dep_name)
               match emb_opt {
                 none -> {}
                 Some(emb_content) -> {
                   if (not skip_embed) {
-                    rs := resolver_rs_content_insert(rs, dep_name, emb_content)
+                    rs.resolved_rs_content := str_dict_set(rs.resolved_rs_content, dep_name, emb_content)
                     has_rs_dep := true
                   } else {
                     has_rs_dep := true
-                    rs := resolver_hom_names_insert(rs, dep_name)
+                    rs.resolved_hom_names := vec_push_str(rs.resolved_hom_names, dep_name)
                   }
                 }
               }
@@ -104,29 +139,29 @@ resolve_file := (rs::ResolverState, path: str) -> ResolveFileResult {
         Err("${canonical}: Semantic errors:\n${sema_err_str}")
       } else {
         // ── Codegen ─────────────────────────────────────────────────────
-        hom_names := resolver_hom_names_get(rs)
-        rs_content_map := resolver_rs_content_get_map(rs)
+        hom_names := hashset_from_vec(rs.resolved_hom_names)
+        rs_content_map := rs.resolved_rs_content
         rust_code := do_codegen(ast, hom_names, rs_content_map)
 
         // ── Compute exports ──────────────────────────────────────────────
-        exports := hashset_new()
+        exports := @[]
         ei := 0
         while (ei < len(ast)) {
           es := ast[ei]
           ek := stmt_kind(es)
           if (ek == "Bind" or ek == "StructDef" or ek == "EnumDef") {
-            exports := hashset_insert(exports, stmt_bind_name(es))
+            exports := exports + @[stmt_bind_name(es)]
           }
           ei := ei + 1
         }
 
-        rs := resolver_stack_pop(rs)
-        rs := resolver_color_set(rs, canonical, "Black")
+        rs.stack := vec_pop_str(rs.stack)
+        rs.color := str_dict_set(rs.color, canonical, "Black")
 
         rf := make_resolved_file(canonical, rust_code, exports)
-        rs := resolver_files_push(rs, rf)
+        rs.files := files_push_rf(rs.files, rf)
 
-        Ok(hashset_to_vec(exports))
+        Ok(exports)
       }
     }
   }
@@ -138,13 +173,11 @@ resolve_file := (rs::ResolverState, path: str) -> ResolveFileResult {
 resolve := (entry_path: str) -> ResolveProgramResult {
   rs ::= resolver_new(false)
   dummy := resolve_file(rs, entry_path)?
-  files := resolver_files_get(rs)
-  Ok(make_resolved_program(files))
+  Ok(make_resolved_program(rs.files))
 }
 
 resolve_module := (entry_path: str) -> ResolveProgramResult {
   rs ::= resolver_new(true)
   dummy := resolve_file(rs, entry_path)?
-  files := resolver_files_get(rs)
-  Ok(make_resolved_program(files))
+  Ok(make_resolved_program(rs.files))
 }

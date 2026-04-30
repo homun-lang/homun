@@ -2,7 +2,7 @@
 //
 // Ports sema.rs logic to .hom using:
 //   dep/ast_access.rs  — stmt_kind/expr_kind/pat_kind + typed accessors
-//   dep/scope.rs       — Scope (HashSet<String>) wrapper
+//   src/scope.hom      — Scope (@[str]) wrapper
 //   src/sema_imp.rs    — errs_empty/errs_one/errs_join helpers + has_rs_dep trigger
 //
 // Public API (called from lib.rs mod sema_hom after P1.4 wiring):
@@ -15,8 +15,9 @@
 //   check_stmt, check_expr, check_arm, check_stmts
 
 // `use sema_imp` sets has_rs_dep=true so homunc skips undefined-reference
-// checks for dep/ functions (scope_*, stmt_kind, expr_kind, etc.)
+// checks for dep/ functions (stmt_kind, expr_kind, etc.)
 use sema_imp
+use scope
 
 
 // ─── pat_names ───────────────────────────────────────────────────────────────

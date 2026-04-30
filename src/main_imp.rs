@@ -5,12 +5,24 @@
 // functions and runtime functions that are available at include!() time in
 // lib.rs but unknown to homunc's static checker.
 //
-// Helpers:
+// I/O helpers:
 //   read_stdin()              -> String
 //   write_file(path, content) -> ()
 //   exit_process(code)        -> !
 //   get_args()                -> Vec<String>
 //   preamble()                -> String
+//   print_str, eprint_str, homunc_version, emit_runtime_fn
+//   result_ok_or_exit(result) -> String
+//
+// Pipeline wrappers (expose compiler stages to main.hom):
+//   lex(source)                              -> Result<Vec<Token>, String>
+//   parse(tokens)                            -> Result<Vec<Stmt>, String>
+//   sema_analyze_skip_undef(ast, imported)   -> Vec<String>
+//   register_known_dep_fns()                 -> ()
+//   codegen_program(ast, rs_content)         -> String
+//   resolve(path)                            -> Result<ResolvedProgram, String>
+//   resolve_module(path)                     -> Result<ResolvedProgram, String>
+//   build_embed_map(ast)                     -> HashMap<String, String>
 
 /// Read all of stdin to a String. Panics on I/O error.
 pub fn read_stdin() -> String {
@@ -85,25 +97,6 @@ pub fn emit_runtime_fn() {
     }
 }
 
-/// Deduplicate `use` import lines in generated Rust source.
-/// When multiple embedded libraries are inlined (e.g. re + heap),
-/// they may both contain `use std::cell::RefCell;` etc.
-fn dedup_use_lines(src: String) -> String {
-    let mut seen = std::collections::HashSet::new();
-    let mut out = String::with_capacity(src.len());
-    for line in src.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("use ") && trimmed.ends_with(';') {
-            if !seen.insert(trimmed.to_string()) {
-                continue; // duplicate use line — skip
-            }
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    out
-}
-
 /// Extract the Ok value from a Result<String, String>.
 /// On Err, prints the error to stderr and exits with code 1.
 pub fn result_ok_or_exit(result: Result<String, String>) -> String {
@@ -116,53 +109,63 @@ pub fn result_ok_or_exit(result: Result<String, String>) -> String {
     }
 }
 
-/// Compile Homun source text (from a string), returning Rust code or an error message.
-/// Equivalent to compile_source() in main.rs.
-pub fn compile_source_fn(source: String, raw: bool) -> Result<String, String> {
-    let tokens =
-        lexer_hom::lex(source).map_err(|e| format!("Lex error: {}", e))?;
-    let ast =
-        parser_hom::parse(tokens).map_err(|e| format!("Parse error: {}", e))?;
-    let sema_errs =
-        sema_hom::sema_analyze_skip_undef(ast.clone(), Vec::new());
-    if !sema_errs.is_empty() {
-        return Err(format!("Semantic errors:\n{}", sema_errs.join("\n")));
-    }
-    let mut rs_content = std::collections::HashMap::<String, String>::new();
+/// Return type of compile_source / compile_file: Ok(rust_code) or Err(message).
+pub type CompileResult = Result<String, String>;
+
+// ─── Pipeline wrappers — expose compiler stages to main.hom ──────────────────
+// These thin functions let main.hom call each stage directly.
+// All accept/return owned values matching Homun's clone-everything codegen.
+
+pub fn lex(source: String) -> Result<Vec<crate::lexer_hom::Token>, String> {
+    crate::lexer_hom::lex(source)
+}
+
+pub fn parse(tokens: Vec<crate::lexer_hom::Token>) -> Result<Vec<Stmt>, String> {
+    crate::parser_hom::parse(tokens)
+}
+
+pub fn sema_analyze_skip_undef(ast: Vec<Stmt>, imported: Vec<String>) -> Vec<String> {
+    crate::sema_hom::sema_analyze_skip_undef(ast, imported)
+}
+
+pub fn register_known_dep_fns() {
+    crate::codegen_hom::register_known_dep_fns()
+}
+
+/// Call codegen_program_with_resolved with an empty HomFiles set.
+/// Used by compile_source in main.hom (no .hom dep graph for stdin/source path).
+pub fn codegen_program(
+    ast: Vec<Stmt>,
+    rs_content: std::collections::HashMap<String, String>,
+) -> String {
+    crate::codegen_hom::codegen_program_with_resolved(
+        ast,
+        std::collections::HashSet::new(),
+        rs_content,
+    )
+}
+
+pub fn resolve(path: String) -> crate::resolver_hom::ResolveProgramResult {
+    crate::resolver_hom::resolve(path)
+}
+
+pub fn resolve_module(path: String) -> crate::resolver_hom::ResolveProgramResult {
+    crate::resolver_hom::resolve_module(path)
+}
+
+/// Build the rs_content map: for each `use foo` in the AST where foo is an
+/// embedded runtime module, store its Rust source. Kept in Rust for HashMap
+/// insertion with string keys (Homun's index-assign only covers integer indices).
+pub fn build_embed_map(ast: Vec<Stmt>) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
     for stmt in &ast {
         if let Stmt::Use(path) = stmt {
             if path.len() == 1 {
-                if let Some(content) = embedded_rs(&path[0]) {
-                    rs_content.insert(path[0].clone(), content);
+                if let Some(content) = crate::embedded_rs(&path[0]) {
+                    map.insert(path[0].clone(), content);
                 }
             }
         }
     }
-    crate::dep::register_known_dep_fns();
-    let code = codegen_hom::codegen_program_with_resolved(
-        ast,
-        Default::default(),
-        rs_content,
-    );
-    let prefix = if raw { String::new() } else { preamble() };
-    Ok(dedup_use_lines(format!("{}{}", prefix, code)))
-}
-
-/// Compile a .hom file with full multi-file resolution, returning Rust code or an error.
-/// Equivalent to compile_file() in main.rs.
-pub fn compile_file_fn(path: String, raw: bool, module: bool) -> Result<String, String> {
-    let resolved = if module {
-        resolver_hom::resolve_module(path.clone())?
-    } else {
-        resolver_hom::resolve(path.clone())?
-    };
-    crate::dep::register_known_dep_fns();
-    let mut output = if raw { String::new() } else { preamble() };
-    for (i, file) in resolved.files.iter().enumerate() {
-        output.push_str(&file.rust_code);
-        if i + 1 < resolved.files.len() {
-            output.push('\n');
-        }
-    }
-    Ok(dedup_use_lines(output))
+    map
 }
