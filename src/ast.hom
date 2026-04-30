@@ -1,0 +1,99 @@
+// AST type definitions for the Homun language.
+// Every construct maps directly to a Rust construct.
+// pub type Name = String and pub type Program = Vec<Stmt> are omitted;
+// callers use String and @[Stmt] directly.
+
+@derive(Clone, Debug, PartialEq, Eq)
+BinOp := enum {
+  Add, Sub, Mul, Div, Mod, Eq, Neq, Lt, Gt, Le, Ge, And, Or, In, NotIn
+}
+
+@derive(Clone, Debug, PartialEq, Eq)
+UnOp := enum { Not, Neg }
+
+@derive(Clone, Debug)
+TypeExpr := enum {
+  Name(str)
+  List(TypeExpr)
+  Dict(TypeExpr, TypeExpr)
+  Set(TypeExpr)
+  Option(TypeExpr)
+  Tuple(@[TypeExpr])
+  Generic(str, @[TypeExpr])
+  Void
+  Infer
+}
+
+@derive(Clone, Debug)
+FieldDef := struct { name: str, ty: Option<TypeExpr> }
+
+@derive(Clone, Debug)
+VariantDef := struct { name: str, fields: @[(Option<str>, TypeExpr)] }
+
+@derive(Clone, Debug)
+Param := struct { name: str, ty: Option<TypeExpr>, mutable: bool, default: Option<Expr> }
+
+@derive(Clone, Debug)
+Pat := enum {
+  Wild
+  Var(str)
+  Lit(Expr)
+  Tuple(@[Pat])
+  Enum(str, @[Pat])
+  None
+  Or(@[Pat])
+}
+
+@derive(Clone, Debug)
+MatchArm := struct { pat: Pat, guard: Option<Expr>, body: Expr }
+
+@derive(Clone, Debug)
+Expr := enum {
+  Int(i64)
+  Float(f64)
+  Bool(bool)
+  Str(str)
+  Char(char)
+  None
+  Var(str)
+  Field(Expr, str)
+  Index(Expr, Expr)
+  Slice(Expr, Option<Expr>, Option<Expr>, Option<Expr>)
+  List(@[Expr])
+  Dict(@[(Expr, Expr)])
+  Set(@[Expr])
+  Tuple(@[Expr])
+  Struct(Option<str>, @[(str, Expr)])
+  BinOp(BinOp, Expr, Expr)
+  UnOp(UnOp, Expr)
+  Pipe(Expr, Expr)
+  Lambda(generics: @[str], params: @[Param], ret_ty: Option<TypeExpr>, void_mark: Option<TypeExpr>, stmts: @[Stmt], final_expr: Expr)
+  Call(Expr, @[Expr])
+  If(Expr, @[Stmt], Expr, Option<(@[Stmt], Expr)>)
+  Match(Expr, @[MatchArm])
+  For(str, Expr, @[Stmt], Option<Expr>)
+  While(Expr, @[Stmt], Option<Expr>)
+  Block(@[Stmt], Expr)
+  Break(Option<Expr>)
+  Continue
+  LoadRon(Expr, TypeExpr)
+  SaveRon(Expr, Expr)
+  Range(Option<Expr>, Option<Expr>, Option<Expr>)
+  TryUnwrap(Expr)
+  EarlyReturn(Expr)
+}
+
+@derive(Clone, Debug)
+Stmt := enum {
+  Bind(str, Expr, @[str])
+  BindMut(str, Expr)
+  BindPat(Pat, Expr)
+  BindPatMut(Pat, Expr)
+  Assign(Expr, Expr)
+  Use(@[str])
+  StructDef(str, @[FieldDef], @[str])
+  EnumDef(str, @[VariantDef], @[str])
+  Expression(Expr)
+  InnerAttr(str)
+  ThreadLocal(str, Expr)
+}

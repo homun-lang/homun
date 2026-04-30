@@ -1,10 +1,12 @@
 // codegen.hom — Code generator: walks the Homun AST and emits Rust source text.
 //
 // Ports codegen.rs logic to .hom using:
-//   dep/ast_access.rs      — stmt_kind/expr_kind/pat_kind + typed accessors
 //   src/scope.hom          — Scope (@[str]) wrapper
 //   dep/codegen_helpers.rs — ind, codegen_string, codegen_type, etc.
 //   src/codegen_imp.rs     — RsContent/HomFiles type aliases, accessors
+//
+// Stmt/Pat dispatch uses direct match arms on AST variants.
+// Expr/TypeExpr still use expr_kind/type_kind + accessor fns (Box<T> boxing).
 //
 // Public API (called from lib.rs mod codegen_hom after P2.4 wiring):
 //   codegen_program_with_resolved(prog, hom_files, rs_content) -> str
@@ -45,8 +47,8 @@ register_fn_sig := (name: str, params: @[Param]) -> _ {
   pi := 0
   while (pi < len(params)) {
     p := params[pi]
-    push(flags, param_is_mutable(p))
-    push(defaults, param_default(p))
+    push(flags, p.mutable)
+    push(defaults, p.default)
     pi := pi + 1
   }
   fn_mut_params_insert(name, flags)
@@ -58,8 +60,8 @@ set_current_mut_ref_params := (params: @[Param]) -> _ {
   pi := 0
   while (pi < len(params)) {
     p := params[pi]
-    if (param_is_mutable(p)) {
-      current_mut_ref_params_add(param_name(p))
+    if (p.mutable) {
+      current_mut_ref_params_add(p.name)
     }
     pi := pi + 1
   }
@@ -270,11 +272,11 @@ codegen_type_variant_field := (ty: TypeExpr) -> str {
 // Render a single param without mut prefix (for inline lambdas).
 
 codegen_param := (p: Param) -> str {
-  n := param_name(p)
+  n := p.name
   if (n == "_") {
     "_: _"
   } else {
-    match param_ty(p) {
+    match p.ty {
       none    -> n + ": _"
       Some(t) -> n + ": " + codegen_type(t)
     }
@@ -293,13 +295,13 @@ codegen_params_mut := (params: @[Param]) -> str {
   pn := len(params)
   while (pi < pn) {
     p := params[pi]
-    pname := param_name(p)
-    pmut := param_is_mutable(p)
+    pname := p.name
+    pmut := p.mutable
     part := if (pname == "_") {
       "_: _"
     } else {
       if (pmut) {
-        match param_ty(p) {
+        match p.ty {
           Some(t) -> pname + ": &mut " + codegen_type(t)
           none    -> {
             g := gen_names[gen_idx]
@@ -308,7 +310,7 @@ codegen_params_mut := (params: @[Param]) -> str {
           }
         }
       } else {
-        match param_ty(p) {
+        match p.ty {
           Some(t) -> "mut " + pname + ": " + codegen_type(t)
           none    -> {
             g := gen_names[gen_idx]
@@ -334,8 +336,8 @@ infer_generics := (params: @[Param]) -> @[str] {
   pi := 0
   while (pi < len(params)) {
     p := params[pi]
-    if (param_name(p) != "_") {
-      match param_ty(p) {
+    if (p.name != "_") {
+      match p.ty {
         none -> { n ::= n + 1 }
         _ -> {}
       }
@@ -356,11 +358,9 @@ infer_generics := (params: @[Param]) -> @[str] {
 // Flat list of variable names bound by a pattern (for BindPat scope insertion).
 
 pat_names_list := (pat: Pat) -> @[str] {
-  k := pat_kind(pat)
-  match k {
-    "Var" -> @[pat_var_name(pat)]
-    "Tuple" -> {
-      pats := pat_tuple_pats(pat)
+  match pat {
+    Pat.Var(name) -> @[name]
+    Pat.Tuple(pats) -> {
       n := len(pats)
       names := @[]
       i := 0
@@ -429,14 +429,12 @@ cg_lvalue := (i: int, sc: Scope, e: Expr) -> str {
 // Emit a pattern string for match arms.
 
 cg_pat := (p: Pat) -> str {
-  k := pat_kind(p)
-  match k {
-    "Wild" -> "_"
-    "None" -> "None"
-    "Var" -> pat_var_name(p)
-    "Lit" -> cg_expr(0, scope_new(), pat_lit_expr(p))
-    "Tuple" -> {
-      pats := pat_tuple_pats(p)
+  match p {
+    Pat.Wild -> "_"
+    Pat.None -> "None"
+    Pat.Var(name) -> name
+    Pat.Lit(e) -> cg_expr(0, scope_new(), e)
+    Pat.Tuple(pats) -> {
       n := len(pats)
       parts := @[]
       i := 0
@@ -446,10 +444,8 @@ cg_pat := (p: Pat) -> str {
       }
       "(" + join(parts, ", ") + ")"
     }
-    "Enum" -> {
-      name := pat_enum_name(p)
+    Pat.Enum(name, epats) -> {
       name2 := replace(name, ".", "::")
-      epats := pat_enum_pats(p)
       n := len(epats)
       if (n == 0) {
         name2
@@ -467,8 +463,7 @@ cg_pat := (p: Pat) -> str {
         }
       }
     }
-    "Or" -> {
-      or_pats := pat_or_pats(p)
+    Pat.Or(or_pats) -> {
       n := len(or_pats)
       parts := @[]
       i := 0
@@ -478,7 +473,6 @@ cg_pat := (p: Pat) -> str {
       }
       join(parts, " | ")
     }
-    _ -> "_"
   }
 }
 
@@ -606,12 +600,9 @@ cg_print := (i: int, sc: Scope, args: @[Expr]) -> str {
 // True if pat is (or contains via Or) a string literal.
 
 pat_has_str_lit := (p: Pat) -> bool {
-  k := pat_kind(p)
-  if (k == "Lit") {
-    expr_kind(pat_lit_expr(p)) == "Str"
-  } else {
-    if (k == "Or") {
-      or_pats := pat_or_pats(p)
+  match p {
+    Pat.Lit(e) -> expr_kind(e) == "Str"
+    Pat.Or(or_pats) -> {
       n := len(or_pats)
       found := false
       i := 0
@@ -620,9 +611,8 @@ pat_has_str_lit := (p: Pat) -> bool {
         i := i + 1
       }
       found
-    } else {
-      false
     }
+    _ -> false
   }
 }
 
@@ -635,8 +625,7 @@ has_str_pat_in_arms := (arms: @[MatchArm]) -> bool {
   i := 0
   found := false
   while (i < n) {
-    p := arm_pat(arms[i])
-    if (pat_has_str_lit(p)) {
+    if (pat_has_str_lit(arms[i].pat)) {
       found := true
     }
     i := i + 1
@@ -649,9 +638,9 @@ has_str_pat_in_arms := (arms: @[MatchArm]) -> bool {
 // Emit a single match arm.
 
 cg_arm := (i: int, sc: Scope, arm: MatchArm) -> str {
-  p := arm_pat(arm)
-  g_opt := arm_guard(arm)
-  body := arm_body(arm)
+  p := arm.pat
+  g_opt := arm.guard
+  body := arm.body
   pat_s := cg_pat(p)
   guard_s := match g_opt {
     none -> ""
@@ -838,7 +827,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       inner_sc := scope_clone(sc)
       pi2 := 0
       while (pi2 < pn) {
-        inner_sc := scope_insert(inner_sc, param_name(params[pi2]))
+        inner_sc := scope_insert(inner_sc, params[pi2].name)
         pi2 := pi2 + 1
       }
       body_lines := cg_body(i + 1, inner_sc, lam_stmts, fe)
@@ -1006,25 +995,30 @@ cg_stmts := (i: int, sc: Scope, stmts: @[Stmt]) -> (@[str], Scope) {
     s := stmts[idx]
     line := cg_stmt(i, sc, s)
     push(lines, line)
-    k := stmt_kind(s)
-    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef") {
-      sc := scope_insert(sc, stmt_bind_name(s))
-    }
-    if (k == "BindPat") {
-      names := pat_names_list(stmt_bindpat_pat(s))
-      ni := 0
-      while (ni < len(names)) {
-        sc := scope_insert(sc, names[ni])
-        ni := ni + 1
+    match s {
+      Stmt.Bind(name, _, _)
+        | Stmt.BindMut(name, _)
+        | Stmt.StructDef(name, _, _)
+        | Stmt.EnumDef(name, _, _) -> {
+        sc := scope_insert(sc, name)
       }
-    }
-    if (k == "BindPatMut") {
-      names := pat_names_list(stmt_bindpat_mut_pat(s))
-      ni := 0
-      while (ni < len(names)) {
-        sc := scope_insert(sc, names[ni])
-        ni := ni + 1
+      Stmt.BindPat(pat, _) -> {
+        names := pat_names_list(pat)
+        ni := 0
+        while (ni < len(names)) {
+          sc := scope_insert(sc, names[ni])
+          ni := ni + 1
+        }
       }
+      Stmt.BindPatMut(pat, _) -> {
+        names := pat_names_list(pat)
+        ni := 0
+        while (ni < len(names)) {
+          sc := scope_insert(sc, names[ni])
+          ni := ni + 1
+        }
+      }
+      _ -> {}
     }
     idx := idx + 1
   }
@@ -1053,11 +1047,8 @@ cg_body := (i: int, sc: Scope, stmts: @[Stmt], fe: Expr) -> @[str] {
 // Emit a single statement.  Mutates sc in place for new bindings.
 
 cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
-  k := stmt_kind(stmt)
-  match k {
-    "Bind" -> {
-      name := stmt_bind_name(stmt)
-      e := stmt_bind_expr(stmt)
+  match stmt {
+    Stmt.Bind(name, e, _) -> {
       // Thread-local set: name := rhs  →  name_set(rhs);
       if (is_thread_local_var(name)) {
         rhs_s := if (expr_kind(e) == "Str") {
@@ -1083,7 +1074,7 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
         inner_sc := scope_clone(sc)
         pi := 0
         while (pi < pn) {
-          inner_sc := scope_insert(inner_sc, param_name(params[pi]))
+          inner_sc := scope_insert(inner_sc, params[pi].name)
           pi := pi + 1
         }
         body_lines := cg_body(i + 1, inner_sc, lam_stmts, fe2)
@@ -1114,9 +1105,7 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
         }
       }
     }
-    "BindMut" -> {
-      name := stmt_bind_mut_name(stmt)
-      e := stmt_bind_mut_expr(stmt)
+    Stmt.BindMut(name, e) -> {
       // Thread-local set: name ::= rhs  →  name_set(rhs);
       if (is_thread_local_var(name)) {
         rhs_s := if (expr_kind(e) == "Str") {
@@ -1142,7 +1131,7 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
         inner_sc := scope_clone(sc)
         pi := 0
         while (pi < pn) {
-          inner_sc := scope_insert(inner_sc, param_name(params[pi]))
+          inner_sc := scope_insert(inner_sc, params[pi].name)
           pi := pi + 1
         }
         body_lines := cg_body(i + 1, inner_sc, lam_stmts, fe2)
@@ -1173,11 +1162,8 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
         }
       }
     }
-    "BindPat" -> {
-      pat := stmt_bindpat_pat(stmt)
-      e := stmt_bindpat_expr(stmt)
+    Stmt.BindPat(pat, e) -> {
       rhs := cg_expr(i, sc, e)
-      pk := pat_kind(pat)
       names := pat_names_list(pat)
       // Check if ALL variable names are already in scope
       all_exist := true
@@ -1199,38 +1185,31 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
         ind(i) + "(" + join(reassign_parts, ", ") + ") = " + rhs + ";"
       } else {
         // New binding: let (mut a, mut b) = rhs;
-        bind_str := if (pk == "Tuple") {
-          sub_pats := pat_tuple_pats(pat)
-          sn := len(sub_pats)
-          parts := @[]
-          si := 0
-          while (si < sn) {
-            sp := sub_pats[si]
-            spk := pat_kind(sp)
-            part := if (spk == "Var") {
-              "mut " + pat_var_name(sp)
-            } else {
-              if (spk == "Wild") { "_" } else { cg_pat(sp) }
+        bind_str := match pat {
+          Pat.Tuple(sub_pats) -> {
+            sn := len(sub_pats)
+            parts := @[]
+            si := 0
+            while (si < sn) {
+              sp := sub_pats[si]
+              part := match sp {
+                Pat.Var(vname) -> "mut " + vname
+                Pat.Wild -> "_"
+                _ -> cg_pat(sp)
+              }
+              push(parts, part)
+              si := si + 1
             }
-            push(parts, part)
-            si := si + 1
+            join(parts, ", ")
           }
-          join(parts, ", ")
-        } else {
-          if (pk == "Var") {
-            "mut " + pat_var_name(pat)
-          } else {
-            cg_pat(pat)
-          }
+          Pat.Var(vname) -> "mut " + vname
+          _ -> cg_pat(pat)
         }
         ind(i) + "let (" + bind_str + ") = " + rhs + ";"
       }
     }
-    "BindPatMut" -> {
-      pat := stmt_bindpat_mut_pat(stmt)
-      e := stmt_bindpat_mut_expr(stmt)
+    Stmt.BindPatMut(pat, e) -> {
       rhs := cg_expr(i, sc, e)
-      pk := pat_kind(pat)
       names := pat_names_list(pat)
       all_exist := true
       ci := 0
@@ -1249,36 +1228,30 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
         }
         ind(i) + "(" + join(reassign_parts, ", ") + ") = " + rhs + ";"
       } else {
-        bind_str := if (pk == "Tuple") {
-          sub_pats := pat_tuple_pats(pat)
-          sn := len(sub_pats)
-          parts := @[]
-          si := 0
-          while (si < sn) {
-            sp := sub_pats[si]
-            spk := pat_kind(sp)
-            part := if (spk == "Var") {
-              "mut " + pat_var_name(sp)
-            } else {
-              if (spk == "Wild") { "_" } else { cg_pat(sp) }
+        bind_str := match pat {
+          Pat.Tuple(sub_pats) -> {
+            sn := len(sub_pats)
+            parts := @[]
+            si := 0
+            while (si < sn) {
+              sp := sub_pats[si]
+              part := match sp {
+                Pat.Var(vname) -> "mut " + vname
+                Pat.Wild -> "_"
+                _ -> cg_pat(sp)
+              }
+              push(parts, part)
+              si := si + 1
             }
-            push(parts, part)
-            si := si + 1
+            join(parts, ", ")
           }
-          join(parts, ", ")
-        } else {
-          if (pk == "Var") {
-            "mut " + pat_var_name(pat)
-          } else {
-            cg_pat(pat)
-          }
+          Pat.Var(vname) -> "mut " + vname
+          _ -> cg_pat(pat)
         }
         ind(i) + "let (" + bind_str + ") = " + rhs + ";"
       }
     }
-    "Assign" -> {
-      lhs := stmt_assign_lhs(stmt)
-      rhs := stmt_assign_rhs(stmt)
+    Stmt.Assign(lhs, rhs) -> {
       rhs_s := if (expr_kind(lhs) == "Field" and expr_kind(rhs) == "Str") {
         codegen_string(expr_str_val(rhs)) + ".to_string()"
       } else {
@@ -1286,31 +1259,26 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       }
       "${ind(i)}${cg_lvalue(i, sc, lhs)} = ${rhs_s};"
     }
-    "Use" -> {
-      path := stmt_use_path(stmt)
+    Stmt.Use(path) -> {
       ind(i) + "use " + join(path, "::") + ";"
     }
-    "StructDef" -> {
-      name := stmt_bind_name(stmt)
-      fields := stmt_structdef_fields(stmt)
+    Stmt.StructDef(name, fields, _) -> {
       n := len(fields)
       field_lines := @[]
       fi := 0
       while (fi < n) {
         f := fields[fi]
-        ty_str := match fielddef_ty(f) {
+        ty_str := match f.ty {
           none -> "_"
           Some(t) -> codegen_type(t)
         }
-        push(field_lines, ind(i + 1) + "pub " + fielddef_name(f) + ": " + ty_str + ",")
+        push(field_lines, ind(i + 1) + "pub " + f.name + ": " + ty_str + ",")
         fi := fi + 1
       }
       ind(i) + "#[derive(Debug, Clone, PartialEq)]\n" + ind(i) + "struct " + name + " {\n" + join(field_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "EnumDef" -> {
-      name := stmt_bind_name(stmt)
+    Stmt.EnumDef(name, variants, _) -> {
       register_recursive_type(name)
-      variants := stmt_enumdef_variants(stmt)
       n := len(variants)
       var_lines := @[]
       vi := 0
@@ -1322,8 +1290,7 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       clear_recursive_types()
       out
     }
-    "Expression" -> {
-      e := stmt_expression_expr(stmt)
+    Stmt.Expression(e) -> {
       "${ind(i)}${cg_expr(i, sc, e)};"
     }
     _ -> ""
@@ -1367,13 +1334,22 @@ emit_attrs := (attrs: @[str]) -> str {
 // Emit one enum variant line at indentation i.
 
 cg_variant_line := (i: int, v: VariantDef) -> str {
-  vname := variantdef_name(v)
-  vfields := variantdef_fields(v)
+  vname := v.name
+  vfields := v.fields
   nf := len(vfields)
   if (nf == 0) {
     "${ind(i)}${vname},"
   } else {
-    any_named := variantdef_fields_any_named(v)
+    any_named := false
+    fi_check := 0
+    while (fi_check < nf) {
+      fopt_check, _ := vfields[fi_check]
+      match fopt_check {
+        Some(_) -> { any_named := true }
+        none -> {}
+      }
+      fi_check := fi_check + 1
+    }
     if (any_named) {
       parts := @[]
       fi := 0
@@ -1410,7 +1386,7 @@ cg_top_fn := (i: int, name: str, explicit_gen: @[str], params: @[Param], ret_ty:
   param_names := @[]
   pk := 0
   while (pk < pn) {
-    push(param_names, param_name(params[pk]))
+    push(param_names, params[pk].name)
     pk := pk + 1
   }
   scope0 := scope_from_list(param_names)
@@ -1440,10 +1416,8 @@ cg_top_fn := (i: int, name: str, explicit_gen: @[str], params: @[Param], ret_ty:
 // Emit a top-level statement.
 
 codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
-  sk := stmt_kind(stmt)
-  match sk {
-    "Use" -> {
-      path := stmt_use_path(stmt)
+  match stmt {
+    Stmt.Use(path) -> {
       if (len(path) == 1) {
         content_opt := rs_content_get(rs_content, path[0])
         match content_opt {
@@ -1454,22 +1428,19 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         "use " + join(path, "::") + ";"
       }
     }
-    "StructDef" -> {
-      name := stmt_bind_name(stmt)
-      fields := stmt_structdef_fields(stmt)
+    Stmt.StructDef(name, fields, attrs) -> {
       n := len(fields)
       field_lines := @[]
       fi := 0
       while (fi < n) {
         f := fields[fi]
-        ty_str := match fielddef_ty(f) {
+        ty_str := match f.ty {
           none -> "_"
           Some(t) -> codegen_type(t)
         }
-        push(field_lines, ind(i + 1) + "pub " + fielddef_name(f) + ": " + ty_str + ",")
+        push(field_lines, ind(i + 1) + "pub " + f.name + ": " + ty_str + ",")
         fi := fi + 1
       }
-      attrs := stmt_attrs(stmt)
       attrs_str := emit_attrs(attrs)
       has_derive := false
       for a in attrs {
@@ -1482,10 +1453,8 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         attrs_str + "#[derive(Debug, Clone, PartialEq)]\npub struct " + body
       }
     }
-    "EnumDef" -> {
-      name := stmt_bind_name(stmt)
+    Stmt.EnumDef(name, variants, attrs) -> {
       register_recursive_type(name)
-      variants := stmt_enumdef_variants(stmt)
       n := len(variants)
       var_lines := @[]
       vi := 0
@@ -1493,7 +1462,6 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         push(var_lines, cg_variant_line(i + 1, variants[vi]))
         vi := vi + 1
       }
-      attrs := stmt_attrs(stmt)
       attrs_str := emit_attrs(attrs)
       has_derive := false
       for a in attrs {
@@ -1508,9 +1476,7 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
       clear_recursive_types()
       out
     }
-    "Bind" -> {
-      name := stmt_bind_name(stmt)
-      e := stmt_bind_expr(stmt)
+    Stmt.Bind(name, e, attrs) -> {
       if (expr_kind(e) == "Lambda") {
         params := expr_lambda_params(e)
         ret_ty := expr_lambda_ret_ty(e)
@@ -1519,7 +1485,7 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         fe2 := expr_lambda_final(e)
         explicit_gen := expr_lambda_generics(e)
         fn_str := cg_top_fn(i, name, explicit_gen, params, ret_ty, void_mark, lam_stmts, fe2)
-        "" + emit_attrs(stmt_attrs(stmt)) + fn_str
+        "" + emit_attrs(attrs) + fn_str
       } else {
         ek := expr_kind(e)
         ty_str := if (ek == "Str") { "&str" } else {
@@ -1534,9 +1500,7 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         "pub const " + to_upper(name) + ": " + ty_str + " = " + cg_expr(0, scope_new(), e) + ";"
       }
     }
-    "BindMut" -> {
-      name := stmt_bind_mut_name(stmt)
-      e := stmt_bind_mut_expr(stmt)
+    Stmt.BindMut(name, e) -> {
       if (expr_kind(e) == "Lambda") {
         params := expr_lambda_params(e)
         ret_ty := expr_lambda_ret_ty(e)
@@ -1559,13 +1523,11 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
         "pub const " + to_upper(name) + ": " + ty_str + " = " + cg_expr(0, scope_new(), e) + ";"
       }
     }
-    "BindPatMut" -> ""
-    "BindPat" -> ""
-    "Assign" -> ""
-    "Expression" -> cg_expr(0, scope_new(), stmt_expression_expr(stmt)) + ";"
-    "ThreadLocal" -> {
-      tl_name := stmt_thread_local_name(stmt)
-      tl_e := stmt_thread_local_expr(stmt)
+    Stmt.BindPatMut(_, _) -> ""
+    Stmt.BindPat(_, _) -> ""
+    Stmt.Assign(_, _) -> ""
+    Stmt.Expression(e) -> cg_expr(0, scope_new(), e) + ";"
+    Stmt.ThreadLocal(tl_name, tl_e) -> {
       upper := to_upper(tl_name)
       ty_str := tl_infer_type(tl_e)
       init_str := if (expr_kind(tl_e) == "Str") {
@@ -1599,8 +1561,11 @@ codegen_program_with_resolved := (prog: @[Stmt], hom_files: HomFiles, rs_content
   j := 0
   while (j < n) {
     s := prog[j]
-    if (stmt_kind(s) == "InnerAttr") {
-      push(inner_lines, "#![" + stmt_inner_attr_val(s) + "]")
+    match s {
+      Stmt.InnerAttr(body) -> {
+        push(inner_lines, "#![" + body + "]")
+      }
+      _ -> {}
     }
     j := j + 1
   }
@@ -1614,19 +1579,13 @@ codegen_program_with_resolved := (prog: @[Stmt], hom_files: HomFiles, rs_content
   parts := @[]
   while (i < n) {
     s := prog[i]
-    sk := stmt_kind(s)
-    skip := if (sk == "InnerAttr") {
-      true
-    } else {
-      if (sk == "Use") {
-        path := stmt_use_path(s)
-        len(path) == 1 and hom_files_contains(hom_files, path[0])
-      } else {
-        false
-      }
+    skip := match s {
+      Stmt.InnerAttr(_) -> true
+      Stmt.Use(path) -> len(path) == 1 and hom_files_contains(hom_files, path[0])
+      _ -> false
     }
     if (not skip) {
-      push(parts, codegen_top_level_stmt(0, s, rs_content))
+      push(parts, codegen_top_level_stmt(0, prog[i], rs_content))
     }
     i := i + 1
   }

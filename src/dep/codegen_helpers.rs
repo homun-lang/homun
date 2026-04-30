@@ -135,3 +135,559 @@ pub fn generics_str(generics: Vec<String>) -> String {
         format!("<{}>", generics.join(", "))
     }
 }
+
+// ─── Expr discriminator ──────────────────────────────────────────────────────
+
+pub fn expr_kind(e: Expr) -> String {
+    match e {
+        Expr::Int(_) => "Int".to_string(),
+        Expr::Float(_) => "Float".to_string(),
+        Expr::Bool(_) => "Bool".to_string(),
+        Expr::Str(_) => "Str".to_string(),
+        Expr::Char(_) => "Char".to_string(),
+        Expr::None => "None".to_string(),
+        Expr::Var(_) => "Var".to_string(),
+        Expr::Field(_, _) => "Field".to_string(),
+        Expr::Index(_, _) => "Index".to_string(),
+        Expr::Slice(_, _, _, _) => "Slice".to_string(),
+        Expr::List(_) => "List".to_string(),
+        Expr::Dict(_) => "Dict".to_string(),
+        Expr::Set(_) => "Set".to_string(),
+        Expr::Tuple(_) => "Tuple".to_string(),
+        Expr::Struct(_, _) => "Struct".to_string(),
+        Expr::BinOp(_, _, _) => "BinOp".to_string(),
+        Expr::UnOp(_, _) => "UnOp".to_string(),
+        Expr::Pipe(_, _) => "Pipe".to_string(),
+        Expr::Lambda { .. } => "Lambda".to_string(),
+        Expr::Call(_, _) => "Call".to_string(),
+        Expr::If(_, _, _, _) => "If".to_string(),
+        Expr::Match(_, _) => "Match".to_string(),
+        Expr::For(_, _, _, _) => "For".to_string(),
+        Expr::While(_, _, _) => "While".to_string(),
+        Expr::Block(_, _) => "Block".to_string(),
+        Expr::Break(_) => "Break".to_string(),
+        Expr::Continue => "Continue".to_string(),
+        Expr::LoadRon(_, _) => "LoadRon".to_string(),
+        Expr::SaveRon(_, _) => "SaveRon".to_string(),
+        Expr::Range(_, _, _) => "Range".to_string(),
+        Expr::TryUnwrap(_) => "TryUnwrap".to_string(),
+        Expr::EarlyReturn(_) => "EarlyReturn".to_string(),
+    }
+}
+
+// ─── Expr accessors ───────────────────────────────────────────────────────────
+
+pub fn expr_var_name(e: Expr) -> String {
+    match e {
+        Expr::Var(n) => n,
+        _ => panic!("expr_var_name: not Var"),
+    }
+}
+
+pub fn expr_field_expr(e: Expr) -> Expr {
+    match e {
+        Expr::Field(base, _) => *base,
+        _ => panic!("expr_field_expr: not Field"),
+    }
+}
+
+pub fn expr_field_name(e: Expr) -> String {
+    match e {
+        Expr::Field(_, name) => name,
+        _ => panic!("expr_field_name: not Field"),
+    }
+}
+
+pub fn expr_index_expr(e: Expr) -> Expr {
+    match e {
+        Expr::Index(base, _) => *base,
+        _ => panic!("expr_index_expr: not Index"),
+    }
+}
+
+pub fn expr_index_idx(e: Expr) -> Expr {
+    match e {
+        Expr::Index(_, idx) => *idx,
+        _ => panic!("expr_index_idx: not Index"),
+    }
+}
+
+pub fn expr_slice_expr(e: Expr) -> Expr {
+    match e {
+        Expr::Slice(base, _, _, _) => *base,
+        _ => panic!("expr_slice_expr: not Slice"),
+    }
+}
+
+pub fn expr_slice_from(e: Expr) -> Option<Expr> {
+    match e {
+        Expr::Slice(_, from, _, _) => from.map(|x| *x),
+        _ => panic!("expr_slice_from: not Slice"),
+    }
+}
+
+pub fn expr_slice_to(e: Expr) -> Option<Expr> {
+    match e {
+        Expr::Slice(_, _, to, _) => to.map(|x| *x),
+        _ => panic!("expr_slice_to: not Slice"),
+    }
+}
+
+pub fn expr_slice_step(e: Expr) -> Option<Expr> {
+    match e {
+        Expr::Slice(_, _, _, step) => step.map(|x| *x),
+        _ => panic!("expr_slice_step: not Slice"),
+    }
+}
+
+pub fn expr_list_items(e: Expr) -> Vec<Expr> {
+    match e {
+        Expr::List(xs) => xs,
+        _ => panic!("expr_list_items: not List"),
+    }
+}
+
+pub fn expr_set_items(e: Expr) -> Vec<Expr> {
+    match e {
+        Expr::Set(xs) => xs,
+        _ => panic!("expr_set_items: not Set"),
+    }
+}
+
+pub fn expr_tuple_items(e: Expr) -> Vec<Expr> {
+    match e {
+        Expr::Tuple(xs) => xs,
+        _ => panic!("expr_tuple_items: not Tuple"),
+    }
+}
+
+pub fn expr_dict_pairs(e: Expr) -> Vec<(Expr, Expr)> {
+    match e {
+        Expr::Dict(pairs) => pairs,
+        _ => panic!("expr_dict_pairs: not Dict"),
+    }
+}
+
+pub fn expr_struct_name(e: Expr) -> Option<String> {
+    match e {
+        Expr::Struct(name, _) => name,
+        _ => panic!("expr_struct_name: not Struct"),
+    }
+}
+
+pub fn expr_struct_fields(e: Expr) -> Vec<(String, Expr)> {
+    match e {
+        Expr::Struct(_, fields) => fields,
+        _ => panic!("expr_struct_fields: not Struct"),
+    }
+}
+
+pub fn expr_binop_op(e: Expr) -> String {
+    match e {
+        Expr::BinOp(op, _, _) => format!("{:?}", op),
+        _ => panic!("expr_binop_op: not BinOp"),
+    }
+}
+
+pub fn expr_binop_lhs(e: Expr) -> Expr {
+    match e {
+        Expr::BinOp(_, lhs, _) => *lhs,
+        _ => panic!("expr_binop_lhs: not BinOp"),
+    }
+}
+
+pub fn expr_binop_rhs(e: Expr) -> Expr {
+    match e {
+        Expr::BinOp(_, _, rhs) => *rhs,
+        _ => panic!("expr_binop_rhs: not BinOp"),
+    }
+}
+
+pub fn expr_unop_op(e: Expr) -> String {
+    match e {
+        Expr::UnOp(op, _) => format!("{:?}", op),
+        _ => panic!("expr_unop_op: not UnOp"),
+    }
+}
+
+pub fn expr_unop_expr(e: Expr) -> Expr {
+    match e {
+        Expr::UnOp(_, a) => *a,
+        _ => panic!("expr_unop_expr: not UnOp"),
+    }
+}
+
+pub fn expr_pipe_lhs(e: Expr) -> Expr {
+    match e {
+        Expr::Pipe(lhs, _) => *lhs,
+        _ => panic!("expr_pipe_lhs: not Pipe"),
+    }
+}
+
+pub fn expr_pipe_rhs(e: Expr) -> Expr {
+    match e {
+        Expr::Pipe(_, rhs) => *rhs,
+        _ => panic!("expr_pipe_rhs: not Pipe"),
+    }
+}
+
+pub fn expr_call_func(e: Expr) -> Expr {
+    match e {
+        Expr::Call(f, _) => *f,
+        _ => panic!("expr_call_func: not Call"),
+    }
+}
+
+pub fn expr_call_args(e: Expr) -> Vec<Expr> {
+    match e {
+        Expr::Call(_, args) => args,
+        _ => panic!("expr_call_args: not Call"),
+    }
+}
+
+pub fn expr_if_cond(e: Expr) -> Expr {
+    match e {
+        Expr::If(cond, _, _, _) => *cond,
+        _ => panic!("expr_if_cond: not If"),
+    }
+}
+
+pub fn expr_if_then_stmts(e: Expr) -> Vec<Stmt> {
+    match e {
+        Expr::If(_, stmts, _, _) => stmts,
+        _ => panic!("expr_if_then_stmts: not If"),
+    }
+}
+
+pub fn expr_if_then_expr(e: Expr) -> Expr {
+    match e {
+        Expr::If(_, _, te, _) => *te,
+        _ => panic!("expr_if_then_expr: not If"),
+    }
+}
+
+pub fn expr_if_has_else(e: Expr) -> bool {
+    match e {
+        Expr::If(_, _, _, ec) => ec.is_some(),
+        _ => panic!("expr_if_has_else: not If"),
+    }
+}
+
+pub fn expr_if_else_stmts(e: Expr) -> Vec<Stmt> {
+    match e {
+        Expr::If(_, _, _, Some((stmts, _))) => stmts,
+        Expr::If(_, _, _, None) => panic!("expr_if_else_stmts: no else branch"),
+        _ => panic!("expr_if_else_stmts: not If"),
+    }
+}
+
+pub fn expr_if_else_expr(e: Expr) -> Expr {
+    match e {
+        Expr::If(_, _, _, Some((_, ee))) => *ee,
+        Expr::If(_, _, _, None) => panic!("expr_if_else_expr: no else branch"),
+        _ => panic!("expr_if_else_expr: not If"),
+    }
+}
+
+pub fn expr_match_scrutinee(e: Expr) -> Expr {
+    match e {
+        Expr::Match(sc, _) => *sc,
+        _ => panic!("expr_match_scrutinee: not Match"),
+    }
+}
+
+pub fn expr_match_arms(e: Expr) -> Vec<MatchArm> {
+    match e {
+        Expr::Match(_, arms) => arms,
+        _ => panic!("expr_match_arms: not Match"),
+    }
+}
+
+pub fn expr_for_var(e: Expr) -> String {
+    match e {
+        Expr::For(v, _, _, _) => v,
+        _ => panic!("expr_for_var: not For"),
+    }
+}
+
+pub fn expr_for_iter(e: Expr) -> Expr {
+    match e {
+        Expr::For(_, iter, _, _) => *iter,
+        _ => panic!("expr_for_iter: not For"),
+    }
+}
+
+pub fn expr_for_stmts(e: Expr) -> Vec<Stmt> {
+    match e {
+        Expr::For(_, _, stmts, _) => stmts,
+        _ => panic!("expr_for_stmts: not For"),
+    }
+}
+
+pub fn expr_for_final(e: Expr) -> Option<Expr> {
+    match e {
+        Expr::For(_, _, _, fe) => fe.map(|x| *x),
+        _ => panic!("expr_for_final: not For"),
+    }
+}
+
+pub fn expr_while_cond(e: Expr) -> Expr {
+    match e {
+        Expr::While(cond, _, _) => *cond,
+        _ => panic!("expr_while_cond: not While"),
+    }
+}
+
+pub fn expr_while_stmts(e: Expr) -> Vec<Stmt> {
+    match e {
+        Expr::While(_, stmts, _) => stmts,
+        _ => panic!("expr_while_stmts: not While"),
+    }
+}
+
+pub fn expr_while_final(e: Expr) -> Option<Expr> {
+    match e {
+        Expr::While(_, _, fe) => fe.map(|x| *x),
+        _ => panic!("expr_while_final: not While"),
+    }
+}
+
+pub fn expr_block_stmts(e: Expr) -> Vec<Stmt> {
+    match e {
+        Expr::Block(stmts, _) => stmts,
+        _ => panic!("expr_block_stmts: not Block"),
+    }
+}
+
+pub fn expr_block_final(e: Expr) -> Expr {
+    match e {
+        Expr::Block(_, fe) => *fe,
+        _ => panic!("expr_block_final: not Block"),
+    }
+}
+
+pub fn expr_break_value(e: Expr) -> Option<Expr> {
+    match e {
+        Expr::Break(v) => v.map(|x| *x),
+        _ => panic!("expr_break_value: not Break"),
+    }
+}
+
+pub fn expr_lambda_params(e: Expr) -> Vec<Param> {
+    match e {
+        Expr::Lambda { params, .. } => params,
+        _ => panic!("expr_lambda_params: not Lambda"),
+    }
+}
+
+pub fn expr_lambda_stmts(e: Expr) -> Vec<Stmt> {
+    match e {
+        Expr::Lambda { stmts, .. } => stmts,
+        _ => panic!("expr_lambda_stmts: not Lambda"),
+    }
+}
+
+pub fn expr_lambda_final(e: Expr) -> Expr {
+    match e {
+        Expr::Lambda { final_expr, .. } => *final_expr,
+        _ => panic!("expr_lambda_final: not Lambda"),
+    }
+}
+
+pub fn expr_lambda_ret_ty(e: Expr) -> Option<TypeExpr> {
+    match e {
+        Expr::Lambda { ret_ty, .. } => ret_ty,
+        _ => panic!("expr_lambda_ret_ty: not Lambda"),
+    }
+}
+
+pub fn expr_lambda_void_mark(e: Expr) -> Option<TypeExpr> {
+    match e {
+        Expr::Lambda { void_mark, .. } => void_mark,
+        _ => panic!("expr_lambda_void_mark: not Lambda"),
+    }
+}
+
+pub fn expr_lambda_generics(e: Expr) -> Vec<String> {
+    match e {
+        Expr::Lambda { generics, .. } => generics,
+        _ => panic!("expr_lambda_generics: not Lambda"),
+    }
+}
+
+pub fn expr_loadron_path(e: Expr) -> Expr {
+    match e {
+        Expr::LoadRon(path, _) => *path,
+        _ => panic!("expr_loadron_path: not LoadRon"),
+    }
+}
+
+pub fn expr_loadron_type(e: Expr) -> TypeExpr {
+    match e {
+        Expr::LoadRon(_, ty) => ty,
+        _ => panic!("expr_loadron_type: not LoadRon"),
+    }
+}
+
+pub fn expr_saveron_data(e: Expr) -> Expr {
+    match e {
+        Expr::SaveRon(data, _) => *data,
+        _ => panic!("expr_saveron_data: not SaveRon"),
+    }
+}
+
+pub fn expr_saveron_path(e: Expr) -> Expr {
+    match e {
+        Expr::SaveRon(_, path) => *path,
+        _ => panic!("expr_saveron_path: not SaveRon"),
+    }
+}
+
+pub fn expr_tryunwrap_expr(e: Expr) -> Expr {
+    match e {
+        Expr::TryUnwrap(inner) => *inner,
+        _ => panic!("expr_tryunwrap_expr: not TryUnwrap"),
+    }
+}
+
+pub fn expr_earlyreturn_val(e: Expr) -> Expr {
+    match e {
+        Expr::EarlyReturn(val) => *val,
+        _ => panic!("expr_earlyreturn_val: not EarlyReturn"),
+    }
+}
+
+pub fn expr_int_val(e: Expr) -> i64 {
+    match e {
+        Expr::Int(n) => n,
+        _ => panic!("expr_int_val: not Int"),
+    }
+}
+
+pub fn expr_float_val(e: Expr) -> f64 {
+    match e {
+        Expr::Float(f) => f,
+        _ => panic!("expr_float_val: not Float"),
+    }
+}
+
+pub fn expr_bool_val(e: Expr) -> bool {
+    match e {
+        Expr::Bool(b) => b,
+        _ => panic!("expr_bool_val: not Bool"),
+    }
+}
+
+pub fn expr_str_val(e: Expr) -> String {
+    match e {
+        Expr::Str(s) => s,
+        _ => panic!("expr_str_val: not Str"),
+    }
+}
+
+pub fn expr_char_val(e: Expr) -> String {
+    match e {
+        Expr::Char(c) => c.to_string(),
+        _ => panic!("expr_char_val: not Char"),
+    }
+}
+
+pub fn expr_range_start(e: Expr) -> Option<Expr> {
+    match e {
+        Expr::Range(s, _, _) => s.map(|x| *x),
+        _ => panic!("expr_range_start: not Range"),
+    }
+}
+
+pub fn expr_range_end(e: Expr) -> Option<Expr> {
+    match e {
+        Expr::Range(_, end, _) => end.map(|x| *x),
+        _ => panic!("expr_range_end: not Range"),
+    }
+}
+
+pub fn expr_range_step(e: Expr) -> Option<Expr> {
+    match e {
+        Expr::Range(_, _, st) => st.map(|x| *x),
+        _ => panic!("expr_range_step: not Range"),
+    }
+}
+
+// ─── TypeExpr discriminator + accessors ─────────────────────────────────────
+
+pub fn type_kind(t: TypeExpr) -> String {
+    match t {
+        TypeExpr::Name(_) => "Name".to_string(),
+        TypeExpr::List(_) => "List".to_string(),
+        TypeExpr::Dict(_, _) => "Dict".to_string(),
+        TypeExpr::Set(_) => "Set".to_string(),
+        TypeExpr::Option(_) => "Option".to_string(),
+        TypeExpr::Tuple(_) => "Tuple".to_string(),
+        TypeExpr::Generic(_, _) => "Generic".to_string(),
+        TypeExpr::Void => "Void".to_string(),
+        TypeExpr::Infer => "Infer".to_string(),
+    }
+}
+
+pub fn type_name_val(t: TypeExpr) -> String {
+    match t {
+        TypeExpr::Name(n) => n,
+        _ => panic!("type_name_val: not Name"),
+    }
+}
+
+pub fn type_list_inner(t: TypeExpr) -> TypeExpr {
+    match t {
+        TypeExpr::List(inner) => *inner,
+        _ => panic!("type_list_inner: not List"),
+    }
+}
+
+pub fn type_dict_key(t: TypeExpr) -> TypeExpr {
+    match t {
+        TypeExpr::Dict(k, _) => *k,
+        _ => panic!("type_dict_key: not Dict"),
+    }
+}
+
+pub fn type_dict_val(t: TypeExpr) -> TypeExpr {
+    match t {
+        TypeExpr::Dict(_, v) => *v,
+        _ => panic!("type_dict_val: not Dict"),
+    }
+}
+
+pub fn type_set_inner(t: TypeExpr) -> TypeExpr {
+    match t {
+        TypeExpr::Set(inner) => *inner,
+        _ => panic!("type_set_inner: not Set"),
+    }
+}
+
+pub fn type_option_inner(t: TypeExpr) -> TypeExpr {
+    match t {
+        TypeExpr::Option(inner) => *inner,
+        _ => panic!("type_option_inner: not Option"),
+    }
+}
+
+pub fn type_tuple_items(t: TypeExpr) -> Vec<TypeExpr> {
+    match t {
+        TypeExpr::Tuple(ts) => ts,
+        _ => panic!("type_tuple_items: not Tuple"),
+    }
+}
+
+pub fn type_generic_name(t: TypeExpr) -> String {
+    match t {
+        TypeExpr::Generic(n, _) => n,
+        _ => panic!("type_generic_name: not Generic"),
+    }
+}
+
+pub fn type_generic_params(t: TypeExpr) -> Vec<TypeExpr> {
+    match t {
+        TypeExpr::Generic(_, ps) => ps,
+        _ => panic!("type_generic_params: not Generic"),
+    }
+}

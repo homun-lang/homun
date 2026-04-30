@@ -56,7 +56,10 @@ pub mod runtime {
 pub mod dep;
 
 // ── Compiler pipeline modules ────────────────────────────────────────────────
-pub mod ast;
+// ast is now compiled from src/ast.hom by build.rs
+pub mod ast {
+    include!(concat!(env!("OUT_DIR"), "/ast.rs"));
+}
 
 // ── parser_hom — parser compiled from parser.hom ────────────────────────────
 pub mod parser_hom {

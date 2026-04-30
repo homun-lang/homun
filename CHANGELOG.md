@@ -6,6 +6,21 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.84 — 2026-04-30 — `ast.rs` → `ast.hom` + delete `dep/ast_access.rs`
+
+Cashed in the v0.82 features (multi-payload variants F1, or-patterns F3, `@derive` F4 with auto-Box for self-recursive enums) on the two pending high-leverage targets that v0.83 deferred. Hom:Rs ratio: **0.77 (v0.81) → 1.18 (v0.83) → 1.45 (now)**.
+
+- `src/ast.rs` (207 lines) → `src/ast.hom` (~80 lines): all 12 AST type defs use `@derive(Clone, Debug)`; auto-Box recurses through `Option<T>` / `Tuple` wrappers (the v0.83 `codegen_helpers.rs` fix was the unblocker)
+- `resolver.hom`: `stmt_kind` / `stmt_use_path` callsites replaced with direct `match Stmt { … }` arms
+- `sema.hom`: `stmt_kind` / `pat_kind` / `param_*` accessors replaced with multi-payload destructure + or-patterns; `expr_kind` accessors kept where Box<Expr> deref is needed; added `expr_is_lambda` helper to `sema_imp.rs` for ThreadLocal check
+- `codegen.hom`: all `stmt_*` / `pat_*` / `arm_*` / `param_*` / `fielddef_*` / `variantdef_*` accessors replaced with direct `match` + field access; `expr_*` / `type_*` accessors kept (Box<T> deref still needed for self-recursive variants)
+- `src/dep/ast_access.rs` (964 lines) **deleted**. 53 still-needed `expr_*` / `type_*` Box-deref helpers moved into `src/dep/codegen_helpers.rs`; 40 zero-caller fns dropped
+- Net: **−409 lines** in `dep/` Rust shims, +75 lines in `src/*.hom`. Total `.rs` (src + dep): 3,549 → 2,943
+- 182 tests pass, `cargo fmt` + `cargo clippy -- -D warnings` clean
+- 5 sub-tickets executed autonomously by claude-bot in ~85 min: R1b (ast.hom retry), R2a (resolver), R2b (sema), R2c (codegen), R2d (delete)
+
+---
+
 ### v0.83 — 2026-04-29 — Hom:Rs ratio rebalanced via 10 self-host reductions
 
 Applied the v0.82 language additions (multi-payload variants, or-patterns, `@derive` on .hom enums, `@thread_local`, `path`/`fs` stdlib, explicit generics) to shrink the compiler's `_imp.rs` and `dep/` Rust shims. Foundation features F1–F6 landed alongside v0.82's F7 in the same dev cycle.

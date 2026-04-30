@@ -1,7 +1,6 @@
 // sema.hom — Semantic analysis (undefined-reference check) for Homun.
 //
 // Ports sema.rs logic to .hom using:
-//   dep/ast_access.rs  — stmt_kind/expr_kind/pat_kind + typed accessors
 //   src/scope.hom      — Scope (@[str]) wrapper
 //   src/sema_imp.rs    — errs_empty/errs_one/errs_join helpers + has_rs_dep trigger
 //
@@ -15,7 +14,7 @@
 //   check_stmt, check_expr, check_arm, check_stmts
 
 // `use sema_imp` sets has_rs_dep=true so homunc skips undefined-reference
-// checks for dep/ functions (stmt_kind, expr_kind, etc.)
+// checks for dep/ functions (scope_*, expr_kind, expr_lambda_*, etc.)
 use sema_imp
 use scope
 
@@ -24,11 +23,9 @@ use scope
 // Returns a flat list of variable names bound by a pattern.
 
 pat_names := (pat: Pat) -> @[str] {
-  k := pat_kind(pat)
-  match k {
-    "Var" -> @[pat_var_name(pat)]
-    "Tuple" -> {
-      pats := pat_tuple_pats(pat)
+  match pat {
+    Pat.Var(name) -> @[name]
+    Pat.Tuple(pats) -> {
       n := len(pats)
       i := 0
       names := errs_empty()
@@ -38,8 +35,7 @@ pat_names := (pat: Pat) -> @[str] {
       }
       names
     }
-    "Or" -> {
-      or_pats := pat_or_pats(pat)
+    Pat.Or(or_pats) -> {
       if (len(or_pats) == 0) {
         errs_empty()
       } else {
@@ -56,33 +52,32 @@ pat_names := (pat: Pat) -> @[str] {
 
 extend_with_pat := (env: Scope, pat: Pat) -> Scope {
   result := scope_clone(env)
-  k := pat_kind(pat)
-  if (k == "Var") {
-    result := scope_insert(result, pat_var_name(pat))
-  }
-  if (k == "Tuple") {
-    pats := pat_tuple_pats(pat)
-    n := len(pats)
-    i := 0
-    while (i < n) {
-      result := extend_with_pat(result, pats[i])
-      i := i + 1
+  match pat {
+    Pat.Var(name) -> {
+      result := scope_insert(result, name)
     }
-  }
-  if (k == "Enum") {
-    epats := pat_enum_pats(pat)
-    n := len(epats)
-    i := 0
-    while (i < n) {
-      result := extend_with_pat(result, epats[i])
-      i := i + 1
+    Pat.Tuple(pats) -> {
+      n := len(pats)
+      i := 0
+      while (i < n) {
+        result := extend_with_pat(result, pats[i])
+        i := i + 1
+      }
     }
-  }
-  if (k == "Or") {
-    or_pats := pat_or_pats(pat)
-    if (len(or_pats) > 0) {
-      result := extend_with_pat(result, or_pats[0])
+    Pat.Enum(_, epats) -> {
+      n := len(epats)
+      i := 0
+      while (i < n) {
+        result := extend_with_pat(result, epats[i])
+        i := i + 1
+      }
     }
+    Pat.Or(or_pats) -> {
+      if (len(or_pats) > 0) {
+        result := extend_with_pat(result, or_pats[0])
+      }
+    }
+    _ -> {}
   }
   result
 }
@@ -97,22 +92,29 @@ stmts_bound := (env: Scope, stmts: @[Stmt]) -> Scope {
   n := len(stmts)
   i := 0
   while (i < n) {
-    s := stmts[i]
-    k := stmt_kind(s)
-    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef" or k == "ThreadLocal") {
-      result := scope_insert(result, stmt_bind_name(s))
-    }
-    if (k == "BindPat" or k == "BindPatMut") {
-      names := if (k == "BindPat") {
-        pat_names(stmt_bindpat_pat(s))
-      } else {
-        pat_names(stmt_bindpat_mut_pat(s))
+    match stmts[i] {
+      Stmt.Bind(name, _, _)
+        | Stmt.BindMut(name, _)
+        | Stmt.StructDef(name, _, _)
+        | Stmt.EnumDef(name, _, _)
+        | Stmt.ThreadLocal(name, _) -> { result := scope_insert(result, name) }
+      Stmt.BindPat(pat, _) -> {
+        names := pat_names(pat)
+        j := 0
+        while (j < len(names)) {
+          result := scope_insert(result, names[j])
+          j := j + 1
+        }
       }
-      j := 0
-      while (j < len(names)) {
-        result := scope_insert(result, names[j])
-        j := j + 1
+      Stmt.BindPatMut(pat, _) -> {
+        names := pat_names(pat)
+        j := 0
+        while (j < len(names)) {
+          result := scope_insert(result, names[j])
+          j := j + 1
+        }
       }
+      _ -> {}
     }
     i := i + 1
   }
@@ -132,21 +134,29 @@ check_stmts := (env: Scope, stmts: @[Stmt]) -> @[str] {
   while (i < n) {
     s := stmts[i]
     errs := errs_join(errs, check_stmt(local_env, s))
-    k := stmt_kind(s)
-    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef" or k == "ThreadLocal") {
-      local_env := scope_insert(local_env, stmt_bind_name(s))
-    }
-    if (k == "BindPat" or k == "BindPatMut") {
-      names := if (k == "BindPat") {
-        pat_names(stmt_bindpat_pat(s))
-      } else {
-        pat_names(stmt_bindpat_mut_pat(s))
+    match s {
+      Stmt.Bind(name, _, _)
+        | Stmt.BindMut(name, _)
+        | Stmt.StructDef(name, _, _)
+        | Stmt.EnumDef(name, _, _)
+        | Stmt.ThreadLocal(name, _) -> { local_env := scope_insert(local_env, name) }
+      Stmt.BindPat(pat, _) -> {
+        names := pat_names(pat)
+        j := 0
+        while (j < len(names)) {
+          local_env := scope_insert(local_env, names[j])
+          j := j + 1
+        }
       }
-      j := 0
-      while (j < len(names)) {
-        local_env := scope_insert(local_env, names[j])
-        j := j + 1
+      Stmt.BindPatMut(pat, _) -> {
+        names := pat_names(pat)
+        j := 0
+        while (j < len(names)) {
+          local_env := scope_insert(local_env, names[j])
+          j := j + 1
+        }
       }
+      _ -> {}
     }
     i := i + 1
   }
@@ -158,18 +168,16 @@ check_stmts := (env: Scope, stmts: @[Stmt]) -> @[str] {
 // Check a single statement for undefined references.
 
 check_stmt := (env: Scope, stmt: Stmt) -> @[str] {
-  k := stmt_kind(stmt)
-  match k {
-    "Bind" -> check_expr(env, stmt_bind_expr(stmt))
-    "BindMut" -> check_expr(env, stmt_bind_mut_expr(stmt))
-    "Expression" -> check_expr(env, stmt_expression_expr(stmt))
-    "BindPat" -> check_expr(env, stmt_bindpat_expr(stmt))
-    "BindPatMut" -> check_expr(env, stmt_bindpat_mut_expr(stmt))
-    "Assign" -> errs_join(check_expr(env, stmt_assign_lhs(stmt)), check_expr(env, stmt_assign_rhs(stmt)))
-    "ThreadLocal" -> {
-      init := stmt_thread_local_expr(stmt)
-      if (expr_kind(init) == "Lambda") {
-        errs_one("SEMA ERROR: @thread_local binding '${stmt_thread_local_name(stmt)}' cannot be a lambda")
+  match stmt {
+    Stmt.Bind(_, expr, _) -> check_expr(env, expr)
+    Stmt.BindMut(_, expr) -> check_expr(env, expr)
+    Stmt.Expression(expr) -> check_expr(env, expr)
+    Stmt.BindPat(_, expr) -> check_expr(env, expr)
+    Stmt.BindPatMut(_, expr) -> check_expr(env, expr)
+    Stmt.Assign(lhs, rhs) -> errs_join(check_expr(env, lhs), check_expr(env, rhs))
+    Stmt.ThreadLocal(name, init) -> {
+      if (expr_is_lambda(init)) {
+        errs_one("SEMA ERROR: @thread_local binding '${name}' cannot be a lambda")
       } else {
         check_expr(env, init)
       }
@@ -182,6 +190,10 @@ check_stmt := (env: Scope, stmt: Stmt) -> @[str] {
 // ─── check_expr ──────────────────────────────────────────────────────────────
 // Check an expression for undefined references.  Returns a list of error
 // message strings (empty means no errors).
+//
+// NOTE: Expr variants have Box<Expr> fields (self-recursive), so we cannot
+// use direct Homun match patterns and instead keep the expr_kind discriminator
+// with accessor functions that handle Box dereference internally.
 
 check_expr := (env: Scope, expr: Expr) -> @[str] {
   k := expr_kind(expr)
@@ -365,8 +377,8 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
         pn2 := len(params)
         while (pi2 < pn2) {
           p := params[pi2]
-          if (param_name(p) != "_") {
-            if (param_ty(p).is_none()) { has_untyped := true }
+          if (p.name != "_") {
+            if (p.ty.is_none()) { has_untyped := true }
           }
           pi2 := pi2 + 1
         }
@@ -382,7 +394,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       pn := len(params)
       pi := 0
       while (pi < pn) {
-        env2 := scope_insert(env2, param_name(params[pi]))
+        env2 := scope_insert(env2, params[pi].name)
         pi := pi + 1
       }
       lam_errs  := check_stmts(env2, lam_stmts)
@@ -402,32 +414,34 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
 // names bound by the arm's pattern.
 
 check_arm := (env: Scope, arm: MatchArm) -> @[str] {
-  p       := arm_pat(arm)
-  // Validate or-pattern: all alternatives must bind the same names
-  or_errs := if (pat_kind(p) == "Or") {
-    or_pats := pat_or_pats(p)
-    n_or := len(or_pats)
-    all_ok := true
-    ref_str := join(pat_names(or_pats[0]), ",")
-    ki := 1
-    while (ki < n_or) {
-      alt_str := join(pat_names(or_pats[ki]), ",")
-      if (ref_str != alt_str) {
-        all_ok := false
+  // extend_with_pat uses arm.pat as a function arg → .clone() is emitted,
+  // so arm.pat is NOT moved here and remains accessible below.
+  env2    := extend_with_pat(env, arm.pat)
+  g_opt   := arm.guard
+  body    := arm.body
+  // Validate or-pattern: all alternatives must bind the same names.
+  // arm.pat is still available (not moved by the function call above).
+  or_errs := match arm.pat {
+    Pat.Or(or_pats) -> {
+      n_or := len(or_pats)
+      all_ok := true
+      ref_str := join(pat_names(or_pats[0]), ",")
+      ki := 1
+      while (ki < n_or) {
+        alt_str := join(pat_names(or_pats[ki]), ",")
+        if (ref_str != alt_str) {
+          all_ok := false
+        }
+        ki := ki + 1
       }
-      ki := ki + 1
+      if (not all_ok) {
+        errs_one("SEMA ERROR: or-pattern alternatives must bind the same names")
+      } else {
+        errs_empty()
+      }
     }
-    if (not all_ok) {
-      errs_one("SEMA ERROR: or-pattern alternatives must bind the same names")
-    } else {
-      errs_empty()
-    }
-  } else {
-    errs_empty()
+    _ -> errs_empty()
   }
-  env2    := extend_with_pat(env, p)
-  g_opt   := arm_guard(arm)
-  body    := arm_body(arm)
   g_errs  := match g_opt {
     none -> errs_empty()
     Some(g) -> check_expr(env2, g)
@@ -448,10 +462,13 @@ run_sema := (prog: @[Stmt], imported_list: @[str], skip_undef: bool) -> @[str] {
   pn := len(prog)
   pi := 0
   while (pi < pn) {
-    s := prog[pi]
-    k := stmt_kind(s)
-    if (k == "Bind" or k == "BindMut" or k == "StructDef" or k == "EnumDef" or k == "ThreadLocal") {
-      top_names := scope_insert(top_names, stmt_bind_name(s))
+    match prog[pi] {
+      Stmt.Bind(name, _, _)
+        | Stmt.BindMut(name, _)
+        | Stmt.StructDef(name, _, _)
+        | Stmt.EnumDef(name, _, _)
+        | Stmt.ThreadLocal(name, _) -> { top_names := scope_insert(top_names, name) }
+      _ -> {}
     }
     pi := pi + 1
   }

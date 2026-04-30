@@ -13,5 +13,4 @@
 
 pub use crate::ast::*;
 
-include!("ast_access.rs");
 include!("codegen_helpers.rs");

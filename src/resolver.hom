@@ -9,14 +9,13 @@
 // Uses:
 //   resolver_imp — I/O wrappers, pipeline wrappers, hashset_* helpers,
 //                  str_dict_get, str_dict_set
-//   dep (via lib.rs) — stmt_kind, stmt_use_path, stmt_bind_name
 //
 // Public API:
 //   resolve(entry_path: str)        -> Result<ResolvedProgram, str>
 //   resolve_module(entry_path: str) -> Result<ResolvedProgram, str>
 
 // `use resolver_imp` sets has_rs_dep=true so homunc skips undefined-reference
-// checks for dep/ functions (stmt_kind, hashset_*, join, len, etc.) and
+// checks for dep/ functions (hashset_*, join, len, etc.) and
 // runtime functions that are available at include!() time in lib.rs.
 use resolver_imp
 
@@ -89,44 +88,44 @@ resolve_file := (rs::ResolverState, path: str) -> ResolveFileResult {
       n := len(ast)
       i := 0
       while (i < n) {
-        s := ast[i]
-        k := stmt_kind(s)
-        if (k == "Use") {
-          segs := stmt_use_path(s)
-          if (len(segs) == 1) {
-            dep_name := segs[0]
-            fd := find_dep_result(parent_dir, dep_name)?
-            fd_kind, fd_path := fd
+        match ast[i] {
+          Stmt.Use(segs) -> {
+            if (len(segs) == 1) {
+              dep_name := segs[0]
+              fd := find_dep_result(parent_dir, dep_name)?
+              fd_kind, fd_path := fd
 
-            if (fd_kind == "Hom") {
-              dep_exports := resolve_file(rs, fd_path)?
-              imported_names := hashset_extend(imported_names, hashset_from_vec(dep_exports))
-              rs.resolved_hom_names := vec_push_str(rs.resolved_hom_names, dep_name)
-            }
+              if (fd_kind == "Hom") {
+                dep_exports := resolve_file(rs, fd_path)?
+                imported_names := hashset_extend(imported_names, hashset_from_vec(dep_exports))
+                rs.resolved_hom_names := vec_push_str(rs.resolved_hom_names, dep_name)
+              }
 
-            if (fd_kind == "Rs") {
-              rs_file_content := expand_rs_file(fd_path)?
-              rs.resolved_rs_content := str_dict_set(rs.resolved_rs_content, dep_name, rs_file_content)
-              has_rs_dep := true
-            }
+              if (fd_kind == "Rs") {
+                rs_file_content := expand_rs_file(fd_path)?
+                rs.resolved_rs_content := str_dict_set(rs.resolved_rs_content, dep_name, rs_file_content)
+                has_rs_dep := true
+              }
 
-            if (fd_kind == "None") {
-              skip_embed := rs.skip_embed
-              emb_opt := do_embedded_rs(dep_name)
-              match emb_opt {
-                none -> {}
-                Some(emb_content) -> {
-                  if (not skip_embed) {
-                    rs.resolved_rs_content := str_dict_set(rs.resolved_rs_content, dep_name, emb_content)
-                    has_rs_dep := true
-                  } else {
-                    has_rs_dep := true
-                    rs.resolved_hom_names := vec_push_str(rs.resolved_hom_names, dep_name)
+              if (fd_kind == "None") {
+                skip_embed := rs.skip_embed
+                emb_opt := do_embedded_rs(dep_name)
+                match emb_opt {
+                  none -> {}
+                  Some(emb_content) -> {
+                    if (not skip_embed) {
+                      rs.resolved_rs_content := str_dict_set(rs.resolved_rs_content, dep_name, emb_content)
+                      has_rs_dep := true
+                    } else {
+                      has_rs_dep := true
+                      rs.resolved_hom_names := vec_push_str(rs.resolved_hom_names, dep_name)
+                    }
                   }
                 }
               }
             }
           }
+          _ -> {}
         }
         i := i + 1
       }
@@ -147,10 +146,11 @@ resolve_file := (rs::ResolverState, path: str) -> ResolveFileResult {
         exports := @[]
         ei := 0
         while (ei < len(ast)) {
-          es := ast[ei]
-          ek := stmt_kind(es)
-          if (ek == "Bind" or ek == "StructDef" or ek == "EnumDef") {
-            exports := exports + @[stmt_bind_name(es)]
+          match ast[ei] {
+            Stmt.Bind(name, _, _) -> { exports := exports + @[name] }
+            Stmt.StructDef(name, _, _) -> { exports := exports + @[name] }
+            Stmt.EnumDef(name, _, _) -> { exports := exports + @[name] }
+            _ -> {}
           }
           ei := ei + 1
         }

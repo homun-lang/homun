@@ -23,3 +23,10 @@ pub fn errs_join(a: Vec<String>, b: Vec<String>) -> Vec<String> {
     r.extend(b);
     r
 }
+
+/// True if the expression is a Lambda variant.
+/// Used in check_stmt's ThreadLocal arm where a direct Homun match on
+/// Expr.Lambda cannot be written (struct-like variant, boxed final_expr).
+pub fn expr_is_lambda(e: Expr) -> bool {
+    matches!(e, Expr::Lambda { .. })
+}
