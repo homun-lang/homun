@@ -1,0 +1,9 @@
+// expr.hom — module A: defines a self-recursive enum E.
+// Codegen wraps the recursive payload in Box<E>, so the Rust output is
+// `Add(i32, Option<Box<E>>, Option<Box<E>>)`.
+
+@derive(Clone, Debug)
+E := enum {
+  Lit(int)
+  Add(int, Option<E>, Option<E>)
+}

@@ -287,7 +287,7 @@ s := str_pad_center("hi", 10)  // "    hi    " — center in width chars
 - `str_repeat(s: str, n: int) -> str` — n <= 0 returns ""
 - `str_pad_center(s: str, width: int) -> str` — pads with spaces; odd padding goes right
 
-### `use dict` — Dict Builder Helpers
+### `use dict` — Dict Builder + Mutation Helpers
 ```hom
 use dict
 // Build dict from list of (key, value) pairs
@@ -298,13 +298,43 @@ d := dict_zip(keys, values)
 
 // Clone a dict
 d2 := dict_clone(d)
+
+// Mutate in place — binding must be ::= (mutable)
+d3 ::= @{}
+dict_insert(d3, "k", 1)              // add or overwrite
+dict_insert(d3, "k", 99)             // overwrite
+match dict_remove(d3, "k") {         // returns Option<V>
+  Some(v) -> { /* v == 99 */ }
+  none -> {}
+}
+dict_clear(d3)
 ```
 **API**:
 - `dict_from_pairs(pairs: @[(K, V)]) -> @{K: V}` — last value wins on duplicate keys
 - `dict_zip(keys: @[K], values: @[V]) -> @{K: V}` — stops at shorter list
 - `dict_clone(d: @{K: V}) -> @{K: V}` — returns an independent copy
+- `dict_insert(d::@{K: V}, k: K, v: V) -> _` — insert or overwrite entry
+- `dict_remove(d::@{K: V}, k: K) -> Option<V>` — remove and return old value (or `none`)
+- `dict_clear(d::@{K: V}) -> _` — drop every entry
 
-### `use chars` — Character Classification
+### `use set` — Set Mutation Helpers
+```hom
+use set
+s ::= set_new()                       // empty set (typed by first add)
+set_add(s, "alpha")
+set_add(s, "alpha")                   // duplicate — no-op
+removed := set_remove(s, "alpha")     // bool — true if it was present
+set_clear(s)
+```
+**API**:
+- `set_new() -> @{T}` — construct an empty set (use this since `@{}` parses as empty dict)
+- `set_add(s::@{T}, x: T) -> _` — insert; idempotent
+- `set_remove(s::@{T}, x: T) -> bool` — remove; returns `true` if `x` was present
+- `set_clear(s::@{T}) -> _` — drop every element
+
+Read-only set membership is already covered by the `in` operator and `len(s)`.
+
+### `use chars` — Character Classification (string-based)
 ```hom
 use chars
 is_alpha("a")                   // true (works with str or char)

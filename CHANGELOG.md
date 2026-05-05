@@ -6,6 +6,21 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.85 — 2026-05-05 — Direct-match Expr/TypeExpr dispatch, set/dict mutation stdlib
+
+Pushed direct-match dispatch into the two remaining holdouts (`check_expr` in `sema.hom`, `cg_expr`/`codegen_type` in `codegen.hom`) and shipped the missing in-place mutation stdlib for sets and dicts.
+
+- `sema.hom` and `codegen.hom`: `expr_kind` / `type_kind` discriminator + accessor calls replaced with direct `match` arms on AST variants. Box<Expr>-bearing arms keep their accessor calls (auto-deref doesn't apply when the enum is defined cross-file in `ast.hom`); `Lambda` is handled via early-out before the match because of its named fields
+- `dep/codegen_helpers.rs`: 6 zero-caller `expr_*` accessors (`expr_list_items`, `expr_set_items`, `expr_dict_pairs`, `expr_struct_name`, `expr_struct_fields`, …) deleted; new `register_variant_field_types` / `variant_field_types_get` registry added so cross-file variants can drive Box auto-deref in match patterns
+- `hom-std/set.rs` (new): `set_new`, `set_add`, `set_remove`, `set_clear` — `&mut HashSet` mutators registered in `register_known_dep_fns` with `[true, false, …]` flags so callers get `&mut s` codegen
+- `hom-std/dict.rs`: added `dict_insert`, `dict_remove`, `dict_clear` — same `&mut` registration pattern
+- `lib.rs`: `embedded_rs("set"|"dict")` now strips redundant `use std::collections::{HashMap,HashSet}` lines to avoid colliding with `builtin.rs`'s prelude when embedded
+- New examples: `_site/examples/box_match.hom` (self-recursive `List`/`Tree` match), `tests/examples/cross_file_box_match/` (variant defined in module A, matched in module B), `tests/examples/char_builtins/` (F10 `use chars` smoke test), `tests/examples/set_dict_mut/` (F11 mutation contract)
+- `_site/llm.txt`: documented `use set` and the new `dict_insert/remove/clear` API
+- 199 tests pass (172 unit + 22 examples + 5 hom_std), `cargo fmt` + `cargo clippy -- -D warnings` clean
+
+---
+
 ### v0.84 — 2026-04-30 — `ast.rs` → `ast.hom` + delete `dep/ast_access.rs`
 
 Cashed in the v0.82 features (multi-payload variants F1, or-patterns F3, `@derive` F4 with auto-Box for self-recursive enums) on the two pending high-leverage targets that v0.83 deferred. Hom:Rs ratio: **0.77 (v0.81) → 1.18 (v0.83) → 1.45 (now)**.

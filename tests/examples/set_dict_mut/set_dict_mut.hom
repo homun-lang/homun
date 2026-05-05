@@ -1,0 +1,77 @@
+// set_dict_mut.hom — F11 set/dict mutation via use set / use dict.
+//
+// Mutation requires the binding to be ::= (mutable). The codegen passes the
+// first argument as &mut because each set_*/dict_* function is registered in
+// register_known_dep_fns with [true, false, ...] mut-param flags.
+
+use std
+use set
+use dict
+
+main := () -> _ {
+  // ── Set mutation ─────────────────────────────────────────────────────────
+  s ::= set_new()
+  set_add(s, "alpha")
+  set_add(s, "beta")
+  set_add(s, "alpha")           // duplicate — no-op
+  if (len(s) == 2) {
+    print("set_add ok")
+  } else {
+    print("set_add FAIL")
+  }
+
+  removed := set_remove(s, "alpha")
+  if (removed and len(s) == 1) {
+    print("set_remove ok")
+  } else {
+    print("set_remove FAIL")
+  }
+
+  missing := set_remove(s, "ghost")
+  if (not missing) {
+    print("set_remove_missing ok")
+  } else {
+    print("set_remove_missing FAIL")
+  }
+
+  set_clear(s)
+  if (len(s) == 0) {
+    print("set_clear ok")
+  } else {
+    print("set_clear FAIL")
+  }
+
+  // ── Dict mutation ────────────────────────────────────────────────────────
+  d ::= @{}
+  dict_insert(d, "k1", 10)
+  dict_insert(d, "k2", 20)
+  dict_insert(d, "k1", 100)     // overwrite
+  if (len(d) == 2 and d["k1"] == 100 and d["k2"] == 20) {
+    print("dict_insert ok")
+  } else {
+    print("dict_insert FAIL")
+  }
+
+  match dict_remove(d, "k2") {
+    Some(v) -> {
+      if (v == 20 and len(d) == 1) {
+        print("dict_remove ok")
+      } else {
+        print("dict_remove FAIL")
+      }
+    }
+    none -> { print("dict_remove FAIL: none") }
+  }
+
+  match dict_remove(d, "ghost") {
+    Some(_) -> { print("dict_remove_missing FAIL") }
+    none -> { print("dict_remove_missing ok") }
+  }
+
+  dict_clear(d)
+  if (len(d) == 0) {
+    print("dict_clear ok")
+  } else {
+    print("dict_clear FAIL")
+  }
+}

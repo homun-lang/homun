@@ -1,0 +1,76 @@
+// box_match.hom — match on self-recursive enums (Box<T> in variant fields)
+//
+// Self-recursive enum payload types are auto-wrapped in Box<T> by codegen:
+//   Cons(int, Option<List>) → enum List { Cons(i32, Option<Box<List>>), Nil }
+// This fixture exercises top-level match-arm destructure on such variants.
+use std
+
+@derive(Clone, Debug)
+List := enum {
+  Cons(int, Option<List>)
+  Nil
+}
+
+@derive(Clone, Debug)
+Tree := enum {
+  Leaf(int)
+  Branch(int, Option<Tree>, Option<Tree>)
+}
+
+head_or := (xs: List, dflt: int) -> int {
+  match xs {
+    List.Cons(v, _) -> v
+    List.Nil -> dflt
+  }
+}
+
+root_val := (t: Tree) -> int {
+  match t {
+    Tree.Leaf(v) -> v
+    Tree.Branch(v, _, _) -> v
+  }
+}
+
+// Exercises Box<T> auto-deref: `rest` binds the inner of `Some(...)`, which
+// codegen wraps in `Box<List>`. The lowering inserts `let rest = *rest;` so
+// the body sees a plain `List`. The recursive arm is unreachable here (we
+// only construct Cons(_, none) leaves) but it must still compile.
+length_or := (xs: List) -> int {
+  match xs {
+    List.Nil -> 0
+    List.Cons(_, Some(rest)) -> 1 + length_or(rest)
+    List.Cons(_, none) -> 1
+  }
+}
+
+// Same auto-deref for Tree.Branch's recursive Option<Tree> fields.
+tree_size := (t: Tree) -> int {
+  match t {
+    Tree.Leaf(_) -> 1
+    Tree.Branch(_, Some(l), Some(r)) -> 1 + tree_size(l) + tree_size(r)
+    Tree.Branch(_, Some(l), none) -> 1 + tree_size(l)
+    Tree.Branch(_, none, Some(r)) -> 1 + tree_size(r)
+    Tree.Branch(_, none, none) -> 1
+  }
+}
+
+main := () -> _ {
+  xs := List.Cons(7, none)
+  ys := List.Nil
+  print("head=${head_or(xs, -1)}")
+  print("empty=${head_or(ys, -1)}")
+
+  t1 := Tree.Leaf(42)
+  t2 := Tree.Branch(99, none, none)
+  print("leaf=${root_val(t1)}")
+  print("branch=${root_val(t2)}")
+
+  xs2 := List.Cons(7, none)
+  ys2 := List.Nil
+  t3 := Tree.Leaf(42)
+  t4 := Tree.Branch(99, none, none)
+  print("len_cons=${length_or(xs2)}")
+  print("len_nil=${length_or(ys2)}")
+  print("size_leaf=${tree_size(t3)}")
+  print("size_branch=${tree_size(t4)}")
+}

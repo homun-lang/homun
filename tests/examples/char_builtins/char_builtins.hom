@@ -1,0 +1,29 @@
+// char_builtins.hom — F10 character classification via `use chars`.
+
+use chars
+
+main := () -> _ {
+  if (is_alpha("a") and is_alpha("Z") and not is_alpha("3")) {
+    print("ok: is_alpha")
+  } else {
+    print("FAIL: is_alpha")
+  }
+
+  if (is_digit("0") and is_digit("9") and not is_digit("a")) {
+    print("ok: is_digit")
+  } else {
+    print("FAIL: is_digit")
+  }
+
+  if (is_alnum("a") and is_alnum("7") and not is_alnum(" ")) {
+    print("ok: is_alnum")
+  } else {
+    print("FAIL: is_alnum")
+  }
+
+  if (is_ws(" ") and is_ws("\t") and not is_ws("a")) {
+    print("ok: is_ws")
+  } else {
+    print("FAIL: is_ws")
+  }
+}

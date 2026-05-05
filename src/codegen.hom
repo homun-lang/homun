@@ -5,8 +5,12 @@
 //   dep/codegen_helpers.rs — ind, codegen_string, codegen_type, etc.
 //   src/codegen_imp.rs     — RsContent/HomFiles type aliases, accessors
 //
-// Stmt/Pat dispatch uses direct match arms on AST variants.
-// Expr/TypeExpr still use expr_kind/type_kind + accessor fns (Box<T> boxing).
+// Stmt/Pat/TypeExpr dispatch uses direct match arms on AST variants.
+// Expr dispatch also uses direct match — variants whose payload is Box<Expr>
+// keep accessor calls inside the arm because F8b auto-deref doesn't apply when
+// the enum (Expr) is defined cross-file (in ast.hom). Same applies to TypeExpr
+// (List/Dict/Set/Option payloads are Box<TypeExpr>). Lambda has named fields
+// and is handled via early-out before the match.
 //
 // Public API (called from lib.rs mod codegen_hom after P2.4 wiring):
 //   codegen_program_with_resolved(prog, hom_files, rs_content) -> str
@@ -39,6 +43,20 @@ register_known_dep_fns := () -> _ {
   fn_defaults_insert("heap_pop",      @[none])
   fn_defaults_insert("heap_len",      @[none])
   fn_defaults_insert("heap_is_empty", @[none])
+
+  // F11 — set/dict mutators (use set, use dict). First arg is &mut.
+  fn_mut_params_insert("set_add",     @[true, false])
+  fn_mut_params_insert("set_remove",  @[true, false])
+  fn_mut_params_insert("set_clear",   @[true])
+  fn_mut_params_insert("dict_insert", @[true, false, false])
+  fn_mut_params_insert("dict_remove", @[true, false])
+  fn_mut_params_insert("dict_clear",  @[true])
+  fn_defaults_insert("set_add",     @[none, none])
+  fn_defaults_insert("set_remove",  @[none, none])
+  fn_defaults_insert("set_clear",   @[none])
+  fn_defaults_insert("dict_insert", @[none, none, none])
+  fn_defaults_insert("dict_remove", @[none, none])
+  fn_defaults_insert("dict_clear",  @[none])
 }
 
 register_fn_sig := (name: str, params: @[Param]) -> _ {
@@ -175,10 +193,9 @@ codegen_string := (s: str) -> str {
 // Convert a Homun TypeExpr to its Rust type spelling.
 
 codegen_type := (ty: TypeExpr) -> str {
-  k := type_kind(ty)
-  match k {
-    "Name" -> {
-      n := type_name_val(ty)
+  ty_d := ty
+  match ty_d {
+    TypeExpr.Name(n) -> {
       match n {
         "int"   -> "i32"
         "float" -> "f32"
@@ -189,16 +206,15 @@ codegen_type := (ty: TypeExpr) -> str {
         _       -> n
       }
     }
-    "List"    -> "Vec<" + codegen_type(type_list_inner(ty)) + ">"
-    "Dict"    -> {
+    TypeExpr.List(_) -> "Vec<" + codegen_type(type_list_inner(ty)) + ">"
+    TypeExpr.Dict(_, _) -> {
       ks := codegen_type(type_dict_key(ty))
       vs := codegen_type(type_dict_val(ty))
       "std::collections::HashMap<" + ks + ", " + vs + ">"
     }
-    "Set"     -> "std::collections::HashSet<" + codegen_type(type_set_inner(ty)) + ">"
-    "Option"  -> "Option<" + codegen_type(type_option_inner(ty)) + ">"
-    "Tuple"   -> {
-      ts := type_tuple_items(ty)
+    TypeExpr.Set(_) -> "std::collections::HashSet<" + codegen_type(type_set_inner(ty)) + ">"
+    TypeExpr.Option(_) -> "Option<" + codegen_type(type_option_inner(ty)) + ">"
+    TypeExpr.Tuple(ts) -> {
       parts := @[]
       ti := 0
       while (ti < len(ts)) {
@@ -207,9 +223,7 @@ codegen_type := (ty: TypeExpr) -> str {
       }
       "(" + join(parts, ", ") + ")"
     }
-    "Generic" -> {
-      gn := type_generic_name(ty)
-      gps := type_generic_params(ty)
+    TypeExpr.Generic(gn, gps) -> {
       parts := @[]
       gi := 0
       while (gi < len(gps)) {
@@ -218,9 +232,8 @@ codegen_type := (ty: TypeExpr) -> str {
       }
       gn + "<" + join(parts, ", ") + ">"
     }
-    "Void"    -> "()"
-    "Infer"   -> "_"
-    _         -> "_"
+    TypeExpr.Void -> "()"
+    TypeExpr.Infer -> "_"
   }
 }
 
@@ -229,41 +242,35 @@ codegen_type := (ty: TypeExpr) -> str {
 // Like codegen_type but wraps self-recursive names in Box<...>.
 
 codegen_type_variant_field := (ty: TypeExpr) -> str {
-  k := type_kind(ty)
-  if (k == "Name") {
-    n := type_name_val(ty)
-    if (is_self_recursive_type(n)) {
-      "Box<" + n + ">"
-    } else {
-      codegen_type(ty)
-    }
-  } else {
-    if (k == "Option") {
-      "Option<" + codegen_type_variant_field(type_option_inner(ty)) + ">"
-    } else {
-      if (k == "Generic") {
-        gn := type_generic_name(ty)
-        gps := type_generic_params(ty)
-        if (gn == "Option" and len(gps) == 1) {
-          "Option<" + codegen_type_variant_field(gps[0]) + ">"
-        } else {
-          codegen_type(ty)
-        }
+  ty_d := ty
+  match ty_d {
+    TypeExpr.Name(n) -> {
+      if (is_self_recursive_type(n)) {
+        "Box<" + n + ">"
       } else {
-        if (k == "Tuple") {
-          ts := type_tuple_items(ty)
-          parts := @[]
-          ti := 0
-          while (ti < len(ts)) {
-            push(parts, codegen_type_variant_field(ts[ti]))
-            ti := ti + 1
-          }
-          "(" + join(parts, ", ") + ")"
-        } else {
-          codegen_type(ty)
-        }
+        codegen_type(ty)
       }
     }
+    TypeExpr.Option(_) -> {
+      "Option<" + codegen_type_variant_field(type_option_inner(ty)) + ">"
+    }
+    TypeExpr.Generic(gn, gps) -> {
+      if (gn == "Option" and len(gps) == 1) {
+        "Option<" + codegen_type_variant_field(gps[0]) + ">"
+      } else {
+        codegen_type(ty)
+      }
+    }
+    TypeExpr.Tuple(ts) -> {
+      parts := @[]
+      ti := 0
+      while (ti < len(ts)) {
+        push(parts, codegen_type_variant_field(ts[ti]))
+        ti := ti + 1
+      }
+      "(" + join(parts, ", ") + ")"
+    }
+    _ -> codegen_type(ty)
   }
 }
 
@@ -379,19 +386,12 @@ pat_names_list := (pat: Pat) -> @[str] {
 // Emit a function argument with clone/to_string as needed.
 
 cg_clone_arg := (i: int, sc: Scope, e: Expr) -> str {
-  k := expr_kind(e)
-  if (k == "Var") {
-    expr_var_name(e) + ".clone()"
-  } else {
-    if (k == "Str") {
-      codegen_string(expr_str_val(e)) + ".to_string()"
-    } else {
-      if (k == "Field") {
-        cg_expr(i, sc, e) + ".clone()"
-      } else {
-        cg_expr(i, sc, e)
-      }
-    }
+  e_d := e
+  match e_d {
+    Expr.Var(n) -> n + ".clone()"
+    Expr.Str(s) -> codegen_string(s) + ".to_string()"
+    Expr.Field(_, _) -> cg_expr(i, sc, e) + ".clone()"
+    _ -> cg_expr(i, sc, e)
   }
 }
 
@@ -415,11 +415,11 @@ cg_commas := (i: int, sc: Scope, items: @[Expr]) -> str {
 // Emit an lvalue for assignment (uses [idx as usize] not .homun_idx).
 
 cg_lvalue := (i: int, sc: Scope, e: Expr) -> str {
-  k := expr_kind(e)
-  match k {
-    "Var" -> expr_var_name(e)
-    "Field" -> cg_lvalue(i, sc, expr_field_expr(e)) + "." + expr_field_name(e)
-    "Index" -> cg_lvalue(i, sc, expr_index_expr(e)) + "[" + cg_expr(i, sc, expr_index_idx(e)) + " as usize]"
+  e_d := e
+  match e_d {
+    Expr.Var(n) -> n
+    Expr.Field(_, _) -> cg_lvalue(i, sc, expr_field_expr(e)) + "." + expr_field_name(e)
+    Expr.Index(_, _) -> cg_lvalue(i, sc, expr_index_expr(e)) + "[" + cg_expr(i, sc, expr_index_idx(e)) + " as usize]"
     _ -> cg_expr(i, sc, e)
   }
 }
@@ -477,14 +477,105 @@ cg_pat := (p: Pat) -> str {
 }
 
 
+// ─── Box<T> auto-deref support ────────────────────────────────────────────────
+// When matching a self-recursive enum variant whose field type is the enum
+// itself (or wraps one inside Option/Tuple), codegen_type_variant_field wraps
+// it in Box<T>. So a binding like `List.Cons(_, Some(rest))` produces
+// `rest: Box<List>` in Rust. These helpers detect such bindings so cg_arm can
+// emit `let rest = *rest;` rebindings to give the body a plain `List` value.
+
+walk_pat_box_names := (pat: Pat, ty: TypeExpr, enum_name: str) -> @[str] {
+  match pat {
+    Pat.Var(name) -> {
+      ty_d := ty
+      match ty_d {
+        TypeExpr.Name(n) -> {
+          if (n == enum_name) { @[name] } else { @[] }
+        }
+        _ -> @[]
+      }
+    }
+    Pat.Enum(qual, inner) -> {
+      is_some := (qual == "Some" or qual == "Option.Some") and len(inner) == 1
+      if (is_some) {
+        ty_d := ty
+        match ty_d {
+          TypeExpr.Option(_) -> walk_pat_box_names(inner[0], type_option_inner(ty), enum_name)
+          TypeExpr.Generic(gn, gps) -> {
+            if (gn == "Option" and len(gps) == 1) {
+              walk_pat_box_names(inner[0], gps[0], enum_name)
+            } else {
+              @[]
+            }
+          }
+          _ -> @[]
+        }
+      } else {
+        @[]
+      }
+    }
+    Pat.Tuple(pats) -> {
+      ty_d := ty
+      match ty_d {
+        TypeExpr.Tuple(tys) -> {
+          np := len(pats)
+          nt := len(tys)
+          n := if (np < nt) { np } else { nt }
+          result := @[]
+          i := 0
+          while (i < n) {
+            names := walk_pat_box_names(pats[i], tys[i], enum_name)
+            result := vec_extend_strings(result, names)
+            i := i + 1
+          }
+          result
+        }
+        _ -> @[]
+      }
+    }
+    _ -> @[]
+  }
+}
+
+pat_box_var_names := (pat: Pat) -> @[str] {
+  match pat {
+    Pat.Enum(qual_name, sub_pats) -> {
+      dot := find(qual_name, ".")
+      if (dot < 0) {
+        @[]
+      } else {
+        if (not variant_field_types_known(qual_name)) {
+          @[]
+        } else {
+          enum_name := substr(qual_name, 0, dot)
+          fields := variant_field_types_get(qual_name)
+          nf := len(fields)
+          np := len(sub_pats)
+          n := if (np < nf) { np } else { nf }
+          result := @[]
+          i := 0
+          while (i < n) {
+            names := walk_pat_box_names(sub_pats[i], fields[i], enum_name)
+            result := vec_extend_strings(result, names)
+            i := i + 1
+          }
+          result
+        }
+      }
+    }
+    _ -> @[]
+  }
+}
+
+
 // ─── cg_struct_val ────────────────────────────────────────────────────────────
 // Emit a struct field value with .to_string() for string literals.
 
 cg_struct_val := (i: int, sc: Scope, e: Expr) -> str {
-  if (expr_kind(e) == "Str") {
-    codegen_string(expr_str_val(e)) + ".to_string()"
-  } else {
-    cg_expr(i, sc, e)
+  e_d := e
+  match e_d {
+    Expr.Str(s) -> codegen_string(s) + ".to_string()"
+    _ -> cg_expr(i, sc, e)
   }
 }
 
@@ -537,10 +628,10 @@ cg_bin_op := (i: int, sc: Scope, op: str, lhs: Expr, rhs: Expr) -> str {
         "homun_concat(" + l + ", " + r + ")"
       } else {
         if (is_str_expr(lhs) or is_str_expr(rhs)) {
-          ls := if (expr_kind(lhs) == "Str") {
-            l + ".to_string()"
-          } else {
-            l
+          lhs_d := lhs
+          ls := match lhs_d {
+            Expr.Str(_) -> l + ".to_string()"
+            _ -> l
           }
           ls + " + &" + r
         } else {
@@ -572,26 +663,27 @@ cg_bin_op := (i: int, sc: Scope, op: str, lhs: Expr, rhs: Expr) -> str {
 
 cg_print := (i: int, sc: Scope, args: @[Expr]) -> str {
   n := len(args)
-  if (n == 1 and expr_kind(args[0]) == "Str") {
-    s := expr_str_val(args[0])
-    fmt_str, fmt_args := parse_interp(s)
-    if (len(fmt_args) == 0) {
-      "println!(\"" + fmt_str + "\")"
-    } else {
-      "println!(\"" + fmt_str + "\", " + join(fmt_args, ", ") + ")"
+  if (n == 1) {
+    arg0 := args[0]
+    match arg0 {
+      Expr.Str(s) -> {
+        fmt_str, fmt_args := parse_interp(s)
+        if (len(fmt_args) == 0) {
+          "println!(\"" + fmt_str + "\")"
+        } else {
+          "println!(\"" + fmt_str + "\", " + join(fmt_args, ", ") + ")"
+        }
+      }
+      _ -> "println!(\"{}\", " + cg_expr(i, sc, args[0]) + ")"
     }
   } else {
-    if (n == 1) {
-      "println!(\"{}\", " + cg_expr(i, sc, args[0]) + ")"
-    } else {
-      parts := @[]
-      ai := 0
-      while (ai < n) {
-        push(parts, cg_expr(i, sc, args[ai]))
-        ai := ai + 1
-      }
-      "println!(" + join(parts, ", ") + ")"
+    parts := @[]
+    ai := 0
+    while (ai < n) {
+      push(parts, cg_expr(i, sc, args[ai]))
+      ai := ai + 1
     }
+    "println!(" + join(parts, ", ") + ")"
   }
 }
 
@@ -601,7 +693,8 @@ cg_print := (i: int, sc: Scope, args: @[Expr]) -> str {
 
 pat_has_str_lit := (p: Pat) -> bool {
   match p {
-    Pat.Lit(e) -> expr_kind(e) == "Str"
+    Pat.Lit(Expr.Str(_)) -> true
+    Pat.Lit(_) -> false
     Pat.Or(or_pats) -> {
       n := len(or_pats)
       found := false
@@ -646,12 +739,23 @@ cg_arm := (i: int, sc: Scope, arm: MatchArm) -> str {
     none -> ""
     Some(g) -> " if " + cg_expr(i, sc, g)
   }
-  body_s := if (expr_kind(body) == "Str") {
-    codegen_string(expr_str_val(body)) + ".to_string()"
-  } else {
-    cg_expr(i + 1, sc, body)
+  body_d := body
+  body_s := match body_d {
+    Expr.Str(s) -> codegen_string(s) + ".to_string()"
+    _ -> cg_expr(i + 1, sc, body)
   }
-  "${ind(i + 1)}${pat_s}${guard_s} => ${body_s},"
+  box_vars := pat_box_var_names(p)
+  if (len(box_vars) == 0) {
+    "${ind(i + 1)}${pat_s}${guard_s} => ${body_s},"
+  } else {
+    rebinds := @[]
+    for nm in box_vars {
+      push(rebinds, "let " + nm + " = *" + nm + ";")
+    }
+    rebind_str := join(rebinds, " ")
+    // Concatenate to avoid literal { and } inside a format! string
+    "${ind(i + 1)}${pat_s}${guard_s} => " + "{ " + rebind_str + " " + body_s + " }" + ","
+  }
 }
 
 
@@ -659,26 +763,52 @@ cg_arm := (i: int, sc: Scope, arm: MatchArm) -> str {
 // Core expression code generator.  Reads sc but never mutates it.
 
 cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
-  k := expr_kind(expr)
-  match k {
-    "Int" -> str(expr_int_val(expr))
-    "Float" -> str_of(expr_float_val(expr)) + "f32"
-    "Bool" -> {
-      if (expr_bool_val(expr)) { "true" } else { "false" }
+  // Lambda has named-field variant — can't destructure positionally in Homun
+  // patterns, so handle it via accessor before the direct match.
+  if (expr_kind(expr) == "Lambda") {
+    params := expr_lambda_params(expr)
+    lam_stmts := expr_lambda_stmts(expr)
+    fe := expr_lambda_final(expr)
+    pn := len(params)
+    param_parts := @[]
+    pi := 0
+    while (pi < pn) {
+      push(param_parts, codegen_param(params[pi]))
+      pi := pi + 1
     }
-    "None" -> "None"
-    "Char" -> {
-      c := expr_char_val(expr)
-      if (c == "\\") { "'\\\\'" }
-      else { if (c == "'") { "'\\''" }
-      else { if (c == "\n") { "'\\n'" }
-      else { if (c == "\t") { "'\\t'" }
-      else { if (c == "\0") { "'\\0'" }
-      else { "'" + c + "'" } } } } }
+    param_str := join(param_parts, ", ")
+    inner_sc := scope_clone(sc)
+    pi2 := 0
+    while (pi2 < pn) {
+      inner_sc := scope_insert(inner_sc, params[pi2].name)
+      pi2 := pi2 + 1
     }
-    "Str" -> codegen_string(expr_str_val(expr))
-    "Var" -> {
-      n := expr_var_name(expr)
+    body_lines := cg_body(i + 1, inner_sc, lam_stmts, fe)
+    => "|" + param_str + "| {\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
+  }
+  // Box<Expr>-bearing variants (Field/Index/BinOp/Pipe/Match/etc.) keep
+  // accessor calls because Expr is defined in ast.hom and the bootstrap can't
+  // see its variant_field_types — F8b auto-deref doesn't apply cross-file.
+  // e_dispatch is a clone that match consumes; accessors below run on the
+  // original `expr` parameter, which remains in scope.
+  e_dispatch := expr
+  match e_dispatch {
+    Expr.Int(n) -> str(n)
+    Expr.Float(f) -> str_of(f) + "f32"
+    Expr.Bool(b) -> {
+      if (b) { "true" } else { "false" }
+    }
+    Expr.None -> "None"
+    Expr.Char(c) -> {
+      if (c == '\\') { "'\\\\'" }
+      else { if (c == '\'') { "'\\''" }
+      else { if (c == '\n') { "'\\n'" }
+      else { if (c == '\t') { "'\\t'" }
+      else { if (c == '\0') { "'\\0'" }
+      else { "'" + str(c) + "'" } } } } }
+    }
+    Expr.Str(s) -> codegen_string(s)
+    Expr.Var(n) -> {
       if (n == "_") {
         "_"
       } else {
@@ -689,7 +819,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         }
       }
     }
-    "Field" -> {
+    Expr.Field(_, _) -> {
       base := cg_expr(i, sc, expr_field_expr(expr))
       field := expr_field_name(expr)
       if (is_upper_first(base)) {
@@ -698,10 +828,10 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         base + "." + field
       }
     }
-    "Index" -> {
+    Expr.Index(_, _) -> {
       cg_expr(i, sc, expr_index_expr(expr)) + ".homun_idx(" + cg_expr(i, sc, expr_index_idx(expr)) + ")"
     }
-    "Slice" -> {
+    Expr.Slice(_, _, _, _) -> {
       base_s := cg_expr(i, sc, expr_slice_expr(expr))
       from_opt := expr_slice_from(expr)
       to_opt := expr_slice_to(expr)
@@ -720,12 +850,8 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "slice!(" + base_s + ", " + from_s + ", " + to_s + ", " + step_s + ")"
     }
-    "List" -> {
-      items := expr_list_items(expr)
-      "vec![" + cg_commas(i, sc, items) + "]"
-    }
-    "Dict" -> {
-      pairs := expr_dict_pairs(expr)
+    Expr.List(items) -> "vec![" + cg_commas(i, sc, items) + "]"
+    Expr.Dict(pairs) -> {
       n := len(pairs)
       parts := @[]
       pi := 0
@@ -736,17 +862,9 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "dict![" + join(parts, ", ") + "]"
     }
-    "Set" -> {
-      items := expr_set_items(expr)
-      "set![" + cg_commas(i, sc, items) + "]"
-    }
-    "Tuple" -> {
-      items := expr_tuple_items(expr)
-      "(" + cg_commas(i, sc, items) + ")"
-    }
-    "Struct" -> {
-      name_opt := expr_struct_name(expr)
-      fields := expr_struct_fields(expr)
+    Expr.Set(items) -> "set![" + cg_commas(i, sc, items) + "]"
+    Expr.Tuple(items) -> "(" + cg_commas(i, sc, items) + ")"
+    Expr.Struct(name_opt, fields) -> {
       n := len(fields)
       parts := @[]
       fi := 0
@@ -769,13 +887,13 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         }
       }
     }
-    "BinOp" -> {
+    Expr.BinOp(_, _, _) -> {
       op := expr_binop_op(expr)
       lhs := expr_binop_lhs(expr)
       rhs := expr_binop_rhs(expr)
       cg_bin_op(i, sc, op, lhs, rhs)
     }
-    "UnOp" -> {
+    Expr.UnOp(_, _) -> {
       op := expr_unop_op(expr)
       e := expr_unop_expr(expr)
       if (op == "Not") {
@@ -784,7 +902,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         "-" + cg_expr(i, sc, e)
       }
     }
-    "Pipe" -> {
+    Expr.Pipe(_, _) -> {
       lhs := expr_pipe_lhs(expr)
       rhs := expr_pipe_rhs(expr)
       if (expr_kind(rhs) == "Call") {
@@ -812,28 +930,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         cg_expr(i, sc, rhs) + "(" + cg_expr(i, sc, lhs) + ")"
       }
     }
-    "Lambda" -> {
-      params := expr_lambda_params(expr)
-      lam_stmts := expr_lambda_stmts(expr)
-      fe := expr_lambda_final(expr)
-      pn := len(params)
-      param_parts := @[]
-      pi := 0
-      while (pi < pn) {
-        push(param_parts, codegen_param(params[pi]))
-        pi := pi + 1
-      }
-      param_str := join(param_parts, ", ")
-      inner_sc := scope_clone(sc)
-      pi2 := 0
-      while (pi2 < pn) {
-        inner_sc := scope_insert(inner_sc, params[pi2].name)
-        pi2 := pi2 + 1
-      }
-      body_lines := cg_body(i + 1, inner_sc, lam_stmts, fe)
-      "|" + param_str + "| {\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
-    }
-    "Call" -> {
+    Expr.Call(_, _) -> {
       f := expr_call_func(expr)
       args := expr_call_args(expr)
       if (expr_kind(f) == "Var") {
@@ -857,7 +954,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         cg_general_call(i, sc, f, args)
       }
     }
-    "If" -> {
+    Expr.If(_, _, _, _) -> {
       cond := expr_if_cond(expr)
       then_stmts := expr_if_then_stmts(expr)
       then_fe := expr_if_then_expr(expr)
@@ -873,7 +970,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "if " + cg_expr(i, sc, cond) + " {\n" + join(then_lines, "\n") + "\n" + ind(i) + "}" + else_str
     }
-    "Match" -> {
+    Expr.Match(_, _) -> {
       scrut := expr_match_scrutinee(expr)
       arms := expr_match_arms(expr)
       n := len(arms)
@@ -890,13 +987,13 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "match " + scrut_s + " {\n" + join(arm_strs, "\n") + "\n" + ind(i) + "}"
     }
-    "Block" -> {
+    Expr.Block(_, _) -> {
       stmts := expr_block_stmts(expr)
       fe := expr_block_final(expr)
       body_lines := cg_body(i + 1, sc, stmts, fe)
       "{\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "For" -> {
+    Expr.For(_, _, _, _) -> {
       var := expr_for_var(expr)
       iter := expr_for_iter(expr)
       body_stmts := expr_for_stmts(expr)
@@ -916,7 +1013,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "for " + var + " in " + cg_expr(i, sc, iter) + " {\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "While" -> {
+    Expr.While(_, _, _) -> {
       cond := expr_while_cond(expr)
       body_stmts := expr_while_stmts(expr)
       fe_opt := expr_while_final(expr)
@@ -931,30 +1028,30 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
       }
       "while " + cg_expr(i, sc, cond) + " {\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
     }
-    "Break" -> {
+    Expr.Break(_) -> {
       val_opt := expr_break_value(expr)
       match val_opt {
         none -> "break"
         Some(v) -> "return " + cg_expr(i, sc, v)
       }
     }
-    "Continue" -> "continue"
-    "LoadRon" -> {
+    Expr.Continue -> "continue"
+    Expr.LoadRon(_, _) -> {
       path := expr_loadron_path(expr)
       ty := expr_loadron_type(expr)
       "ron::from_str::<" + codegen_type(ty) + ">(&std::fs::read_to_string(" + cg_expr(i, sc, path) + ").unwrap()).unwrap()"
     }
-    "SaveRon" -> {
+    Expr.SaveRon(_, _) -> {
       data := expr_saveron_data(expr)
       path := expr_saveron_path(expr)
       "std::fs::write(" + cg_expr(i, sc, path) + ", ron::to_string(&" + cg_expr(i, sc, data) + ").unwrap()).unwrap()"
     }
-    "EarlyReturn" -> {
+    Expr.EarlyReturn(_) -> {
       val := expr_earlyreturn_val(expr)
       "return " + cg_expr(i, sc, val)
     }
-    "TryUnwrap" -> cg_expr(i, sc, expr_tryunwrap_expr(expr)) + "?"
-    "Range" -> {
+    Expr.TryUnwrap(_) -> cg_expr(i, sc, expr_tryunwrap_expr(expr)) + "?"
+    Expr.Range(_, _, _) -> {
       start_opt := expr_range_start(expr)
       end_opt := expr_range_end(expr)
       step_opt := expr_range_step(expr)
@@ -1032,10 +1129,10 @@ cg_stmts := (i: int, sc: Scope, stmts: @[Stmt]) -> (@[str], Scope) {
 cg_body := (i: int, sc: Scope, stmts: @[Stmt], fe: Expr) -> @[str] {
   body_sc := scope_clone(sc)
   lines, body_sc := cg_stmts(i, body_sc, stmts)
-  fe_s := if (expr_kind(fe) == "Str") {
-    codegen_string(expr_str_val(fe)) + ".to_string()"
-  } else {
-    cg_expr(i, body_sc, fe)
+  fe_d := fe
+  fe_s := match fe_d {
+    Expr.Str(s) -> codegen_string(s) + ".to_string()"
+    _ -> cg_expr(i, body_sc, fe)
   }
   fe_line := "${ind(i)}${fe_s}"
   push(lines, fe_line)
@@ -1302,15 +1399,16 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
 // Infer the Rust type for a @thread_local initializer expression.
 
 tl_infer_type := (e: Expr) -> str {
-  ek := expr_kind(e)
-  if (ek == "Int") { "i32" }
-  else { if (ek == "Float") { "f32" }
-  else { if (ek == "Bool") { "bool" }
-  else { if (ek == "Str") { "String" }
-  else { if (ek == "List") { "Vec<_>" }
-  else { if (ek == "Dict") { "std::collections::HashMap<_, _>" }
-  else { if (ek == "Set") { "std::collections::HashSet<_>" }
-  else { "i32" }}}}}}}
+  match e {
+    Expr.Int(_) -> "i32"
+    Expr.Float(_) -> "f32"
+    Expr.Bool(_) -> "bool"
+    Expr.Str(_) -> "String"
+    Expr.List(_) -> "Vec<_>"
+    Expr.Dict(_) -> "std::collections::HashMap<_, _>"
+    Expr.Set(_) -> "std::collections::HashSet<_>"
+    _ -> "i32"
+  }
 }
 
 
@@ -1556,6 +1654,37 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
 codegen_program_with_resolved := (prog: @[Stmt], hom_files: HomFiles, rs_content: RsContent) -> str {
   n := len(prog)
   clear_thread_local_vars()
+  // Pre-pass: register variant field types for all top-level enums so that
+  // cg_arm can detect bindings landing on Box<T> positions. The registry is
+  // additive across files so that when this codegen pass runs for a file that
+  // imports an enum via `use`, the dependency's variants (registered when its
+  // own earlier DFS-ordered codegen pass ran) are still visible.
+  jj := 0
+  while (jj < n) {
+    match prog[jj] {
+      Stmt.EnumDef(ename, variants, _) -> {
+        nv := len(variants)
+        vi := 0
+        while (vi < nv) {
+          v := variants[vi]
+          vfields := v.fields
+          field_tys := @[]
+          fi := 0
+          nf := len(vfields)
+          while (fi < nf) {
+            fname_opt, fty := vfields[fi]
+            push(field_tys, fty)
+            fi := fi + 1
+          }
+          qual := "${ename}.${v.name}"
+          register_variant_field_types(qual, field_tys)
+          vi := vi + 1
+        }
+      }
+      _ -> {}
+    }
+    jj := jj + 1
+  }
   // Pass 1: collect InnerAttr stmts and emit as #![..] at top
   inner_lines := @[]
   j := 0

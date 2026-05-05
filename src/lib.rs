@@ -135,6 +135,10 @@ mod hom_tests {
         include!("../tests/std-tests/test_dict.rs");
     }
 
+    mod set_mod {
+        include!("../hom-std/set.rs");
+    }
+
     mod path_mod {
         include!("../hom-std/path.rs");
     }
@@ -176,9 +180,26 @@ pub fn embedded_rs(name: &str) -> Option<String> {
         "heap" => Some(include_str!("../hom-std/heap.rs").to_string()),
         "chars" => Some(include_str!("../hom-std/chars.rs").to_string()),
         "str_ext" => Some(include_str!("../hom-std/str_ext.rs").to_string()),
-        "dict" => Some(include_str!("../hom-std/dict.rs").to_string()),
+        // dict/set re-import HashMap/HashSet for their standalone unit tests,
+        // but builtin.rs already brings both into scope via
+        // `use std::collections::{HashMap, HashSet};`. Strip the redundant
+        // imports at embed time so `use dict` / `use set` don't collide.
+        "dict" => Some(strip_collections_imports(include_str!(
+            "../hom-std/dict.rs"
+        ))),
+        "set" => Some(strip_collections_imports(include_str!("../hom-std/set.rs"))),
         "path" => Some(include_str!("../hom-std/path.rs").to_string()),
         "fs" => Some(include_str!("../hom-std/fs.rs").to_string()),
         _ => None,
     }
+}
+
+fn strip_collections_imports(src: &str) -> String {
+    src.lines()
+        .filter(|l| {
+            let t = l.trim();
+            t != "use std::collections::HashMap;" && t != "use std::collections::HashSet;"
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }

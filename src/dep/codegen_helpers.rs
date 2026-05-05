@@ -97,6 +97,35 @@ pub fn is_self_recursive_type(name: String) -> bool {
     SELF_RECURSIVE_TYPES.with(|s| s.borrow().contains(&name))
 }
 
+// ─── Variant field-type registry (for Box<T> auto-deref in match patterns) ───
+
+thread_local! {
+    static VARIANT_FIELD_TYPES: std::cell::RefCell<std::collections::HashMap<String, Vec<TypeExpr>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Register field types for a variant keyed by `EnumName.VariantName`.
+pub fn register_variant_field_types(qual: String, fields: Vec<TypeExpr>) {
+    VARIANT_FIELD_TYPES.with(|s| {
+        s.borrow_mut().insert(qual, fields);
+    });
+}
+
+/// Look up registered field types for `EnumName.VariantName`. Empty if unknown.
+pub fn variant_field_types_get(qual: String) -> Vec<TypeExpr> {
+    VARIANT_FIELD_TYPES.with(|s| s.borrow().get(&qual).cloned().unwrap_or_default())
+}
+
+/// Returns true if a variant has been registered.
+pub fn variant_field_types_known(qual: String) -> bool {
+    VARIANT_FIELD_TYPES.with(|s| s.borrow().contains_key(&qual))
+}
+
+/// Clear the variant field-type registry.
+pub fn clear_variant_field_types() {
+    VARIANT_FIELD_TYPES.with(|s| s.borrow_mut().clear());
+}
+
 // ─── Thread-local variable registry ─────────────────────────────────────────
 
 thread_local! {
@@ -240,45 +269,10 @@ pub fn expr_slice_step(e: Expr) -> Option<Expr> {
     }
 }
 
-pub fn expr_list_items(e: Expr) -> Vec<Expr> {
-    match e {
-        Expr::List(xs) => xs,
-        _ => panic!("expr_list_items: not List"),
-    }
-}
-
-pub fn expr_set_items(e: Expr) -> Vec<Expr> {
-    match e {
-        Expr::Set(xs) => xs,
-        _ => panic!("expr_set_items: not Set"),
-    }
-}
-
 pub fn expr_tuple_items(e: Expr) -> Vec<Expr> {
     match e {
         Expr::Tuple(xs) => xs,
         _ => panic!("expr_tuple_items: not Tuple"),
-    }
-}
-
-pub fn expr_dict_pairs(e: Expr) -> Vec<(Expr, Expr)> {
-    match e {
-        Expr::Dict(pairs) => pairs,
-        _ => panic!("expr_dict_pairs: not Dict"),
-    }
-}
-
-pub fn expr_struct_name(e: Expr) -> Option<String> {
-    match e {
-        Expr::Struct(name, _) => name,
-        _ => panic!("expr_struct_name: not Struct"),
-    }
-}
-
-pub fn expr_struct_fields(e: Expr) -> Vec<(String, Expr)> {
-    match e {
-        Expr::Struct(_, fields) => fields,
-        _ => panic!("expr_struct_fields: not Struct"),
     }
 }
 
@@ -557,38 +551,10 @@ pub fn expr_earlyreturn_val(e: Expr) -> Expr {
     }
 }
 
-pub fn expr_int_val(e: Expr) -> i64 {
-    match e {
-        Expr::Int(n) => n,
-        _ => panic!("expr_int_val: not Int"),
-    }
-}
-
-pub fn expr_float_val(e: Expr) -> f64 {
-    match e {
-        Expr::Float(f) => f,
-        _ => panic!("expr_float_val: not Float"),
-    }
-}
-
-pub fn expr_bool_val(e: Expr) -> bool {
-    match e {
-        Expr::Bool(b) => b,
-        _ => panic!("expr_bool_val: not Bool"),
-    }
-}
-
 pub fn expr_str_val(e: Expr) -> String {
     match e {
         Expr::Str(s) => s,
         _ => panic!("expr_str_val: not Str"),
-    }
-}
-
-pub fn expr_char_val(e: Expr) -> String {
-    match e {
-        Expr::Char(c) => c.to_string(),
-        _ => panic!("expr_char_val: not Char"),
     }
 }
 
@@ -614,27 +580,6 @@ pub fn expr_range_step(e: Expr) -> Option<Expr> {
 }
 
 // ─── TypeExpr discriminator + accessors ─────────────────────────────────────
-
-pub fn type_kind(t: TypeExpr) -> String {
-    match t {
-        TypeExpr::Name(_) => "Name".to_string(),
-        TypeExpr::List(_) => "List".to_string(),
-        TypeExpr::Dict(_, _) => "Dict".to_string(),
-        TypeExpr::Set(_) => "Set".to_string(),
-        TypeExpr::Option(_) => "Option".to_string(),
-        TypeExpr::Tuple(_) => "Tuple".to_string(),
-        TypeExpr::Generic(_, _) => "Generic".to_string(),
-        TypeExpr::Void => "Void".to_string(),
-        TypeExpr::Infer => "Infer".to_string(),
-    }
-}
-
-pub fn type_name_val(t: TypeExpr) -> String {
-    match t {
-        TypeExpr::Name(n) => n,
-        _ => panic!("type_name_val: not Name"),
-    }
-}
 
 pub fn type_list_inner(t: TypeExpr) -> TypeExpr {
     match t {
@@ -671,23 +616,3 @@ pub fn type_option_inner(t: TypeExpr) -> TypeExpr {
     }
 }
 
-pub fn type_tuple_items(t: TypeExpr) -> Vec<TypeExpr> {
-    match t {
-        TypeExpr::Tuple(ts) => ts,
-        _ => panic!("type_tuple_items: not Tuple"),
-    }
-}
-
-pub fn type_generic_name(t: TypeExpr) -> String {
-    match t {
-        TypeExpr::Generic(n, _) => n,
-        _ => panic!("type_generic_name: not Generic"),
-    }
-}
-
-pub fn type_generic_params(t: TypeExpr) -> Vec<TypeExpr> {
-    match t {
-        TypeExpr::Generic(_, ps) => ps,
-        _ => panic!("type_generic_params: not Generic"),
-    }
-}

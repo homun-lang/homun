@@ -1,0 +1,27 @@
+// main.hom — module B: imports E from module A and matches on E.Add.
+//
+// Exercises F9 cross-file Box<T> auto-deref. The variant E.Add is defined in
+// expr.hom, so the codegen pass for main.hom only sees `use expr` plus the
+// match arms — yet the pattern lowerer must still emit the
+// `let l = *l; let r = *r;` rebindings so the body can call eval_e on plain
+// E values rather than Box<E>.
+
+use std
+use expr
+
+eval_e := (e: E) -> int {
+  match e {
+    E.Lit(n) -> n
+    E.Add(v, Some(l), Some(r)) -> v + eval_e(l) + eval_e(r)
+    E.Add(v, Some(l), none) -> v + eval_e(l)
+    E.Add(v, none, Some(r)) -> v + eval_e(r)
+    E.Add(v, none, none) -> v
+  }
+}
+
+main := () -> _ {
+  e1 := E.Lit(7)
+  e2 := E.Add(5, none, none)
+  print("lit=${eval_e(e1)}")
+  print("add_leaf=${eval_e(e2)}")
+}

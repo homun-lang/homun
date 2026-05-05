@@ -191,24 +191,67 @@ check_stmt := (env: Scope, stmt: Stmt) -> @[str] {
 // Check an expression for undefined references.  Returns a list of error
 // message strings (empty means no errors).
 //
-// NOTE: Expr variants have Box<Expr> fields (self-recursive), so we cannot
-// use direct Homun match patterns and instead keep the expr_kind discriminator
-// with accessor functions that handle Box dereference internally.
+// Expr dispatch uses direct match — variants whose payload is Box<Expr> keep
+// accessor calls inside the arm because F8b auto-deref doesn't apply when the
+// enum (Expr) is defined cross-file (in ast.hom). Lambda has named fields and
+// is handled via early-out before the match.
 
 check_expr := (env: Scope, expr: Expr) -> @[str] {
-  k := expr_kind(expr)
-  match k {
-    "Var" -> {
-      name := expr_var_name(expr)
+  // Lambda has named-field variant — can't destructure positionally in Homun
+  // patterns, so handle it via accessor before the direct match.
+  if (expr_kind(expr) == "Lambda") {
+    params       := expr_lambda_params(expr)
+    lam_stmts    := expr_lambda_stmts(expr)
+    fe           := expr_lambda_final(expr)
+    explicit_gen := expr_lambda_generics(expr)
+    // Check: explicit generics + untyped params in same fn is an error
+    mixing_errs := if (len(explicit_gen) > 0) {
+      has_untyped := false
+      pi2 := 0
+      pn2 := len(params)
+      while (pi2 < pn2) {
+        p := params[pi2]
+        if (p.name != "_") {
+          if (p.ty.is_none()) { has_untyped := true }
+        }
+        pi2 := pi2 + 1
+      }
+      if (has_untyped) {
+        errs_one("SEMA ERROR: cannot mix explicit <T:...> generics with implicit untyped params in same function")
+      } else {
+        errs_empty()
+      }
+    } else {
+      errs_empty()
+    }
+    env2       := scope_clone(env)
+    pn := len(params)
+    pi := 0
+    while (pi < pn) {
+      env2 := scope_insert(env2, params[pi].name)
+      pi := pi + 1
+    }
+    lam_errs  := check_stmts(env2, lam_stmts)
+    env_final := stmts_bound(env2, lam_stmts)
+    => errs_join(mixing_errs, errs_join(lam_errs, check_expr(env_final, fe)))
+  }
+  // Box<Expr>-bearing variants (Field/Index/BinOp/Pipe/Match/etc.) keep
+  // accessor calls because Expr is defined in ast.hom and the bootstrap can't
+  // see its variant_field_types — F8b auto-deref doesn't apply cross-file.
+  // e_dispatch is a clone that match consumes; accessors below run on the
+  // original `expr` parameter, which remains in scope.
+  e_dispatch := expr
+  match e_dispatch {
+    Expr.Var(name) -> {
       if (name == "_" or scope_contains(env, name)) {
         errs_empty()
       } else {
         errs_one("SEMA ERROR: undefined reference '${name}'")
       }
     }
-    "Field" -> check_expr(env, expr_field_expr(expr))
-    "Index" -> errs_join(check_expr(env, expr_index_expr(expr)), check_expr(env, expr_index_idx(expr)))
-    "Slice" -> {
+    Expr.Field(_, _) -> check_expr(env, expr_field_expr(expr))
+    Expr.Index(_, _) -> errs_join(check_expr(env, expr_index_expr(expr)), check_expr(env, expr_index_idx(expr)))
+    Expr.Slice(_, _, _, _) -> {
       base_errs := check_expr(env, expr_slice_expr(expr))
       from_opt  := expr_slice_from(expr)
       to_opt    := expr_slice_to(expr)
@@ -227,8 +270,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs_join(base_errs, errs_join(from_errs, errs_join(to_errs, step_errs)))
     }
-    "List" -> {
-      items := expr_list_items(expr)
+    Expr.List(items) -> {
       n := len(items)
       i := 0
       errs := errs_empty()
@@ -238,8 +280,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "Set" -> {
-      items := expr_set_items(expr)
+    Expr.Set(items) -> {
       n := len(items)
       i := 0
       errs := errs_empty()
@@ -249,8 +290,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "Tuple" -> {
-      items := expr_tuple_items(expr)
+    Expr.Tuple(items) -> {
       n := len(items)
       i := 0
       errs := errs_empty()
@@ -260,8 +300,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "Dict" -> {
-      pairs := expr_dict_pairs(expr)
+    Expr.Dict(pairs) -> {
       n := len(pairs)
       i := 0
       errs := errs_empty()
@@ -272,8 +311,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "Struct" -> {
-      fields := expr_struct_fields(expr)
+    Expr.Struct(_, fields) -> {
       n := len(fields)
       i := 0
       errs := errs_empty()
@@ -284,10 +322,10 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    "BinOp" -> errs_join(check_expr(env, expr_binop_lhs(expr)), check_expr(env, expr_binop_rhs(expr)))
-    "Pipe" -> errs_join(check_expr(env, expr_pipe_lhs(expr)), check_expr(env, expr_pipe_rhs(expr)))
-    "UnOp" -> check_expr(env, expr_unop_expr(expr))
-    "Call" -> {
+    Expr.BinOp(_, _, _) -> errs_join(check_expr(env, expr_binop_lhs(expr)), check_expr(env, expr_binop_rhs(expr)))
+    Expr.Pipe(_, _) -> errs_join(check_expr(env, expr_pipe_lhs(expr)), check_expr(env, expr_pipe_rhs(expr)))
+    Expr.UnOp(_, _) -> check_expr(env, expr_unop_expr(expr))
+    Expr.Call(_, _) -> {
       f_errs := check_expr(env, expr_call_func(expr))
       args := expr_call_args(expr)
       an := len(args)
@@ -299,7 +337,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs_join(f_errs, arg_errs)
     }
-    "If" -> {
+    Expr.If(_, _, _, _) -> {
       cond_errs  := check_expr(env, expr_if_cond(expr))
       then_errs  := errs_join(check_stmts(env, expr_if_then_stmts(expr)), check_expr(env, expr_if_then_expr(expr)))
       else_errs  := if (expr_if_has_else(expr)) {
@@ -309,7 +347,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs_join(cond_errs, errs_join(then_errs, else_errs))
     }
-    "Match" -> {
+    Expr.Match(_, _) -> {
       sc_errs := check_expr(env, expr_match_scrutinee(expr))
       arms := expr_match_arms(expr)
       an := len(arms)
@@ -321,7 +359,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs_join(sc_errs, arm_errs)
     }
-    "For" -> {
+    Expr.For(_, _, _, _) -> {
       v          := expr_for_var(expr)
       iter       := expr_for_iter(expr)
       body_stmts := expr_for_stmts(expr)
@@ -337,7 +375,7 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs_join(iter_errs, errs_join(body_errs, fe_errs))
     }
-    "While" -> {
+    Expr.While(_, _, _) -> {
       cond       := expr_while_cond(expr)
       body_stmts := expr_while_stmts(expr)
       fe_opt     := expr_while_final(expr)
@@ -350,60 +388,24 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs_join(cond_errs, errs_join(body_errs, fe_errs))
     }
-    "Block" -> {
+    Expr.Block(_, _) -> {
       body_stmts := expr_block_stmts(expr)
       fe         := expr_block_final(expr)
       body_errs  := check_stmts(env, body_stmts)
       env_final  := stmts_bound(env, body_stmts)
       errs_join(body_errs, check_expr(env_final, fe))
     }
-    "Break" -> {
+    Expr.Break(_) -> {
       val_opt := expr_break_value(expr)
       match val_opt {
         none -> errs_empty()
         Some(e) -> check_expr(env, e)
       }
     }
-    "EarlyReturn" -> check_expr(env, expr_earlyreturn_val(expr))
-    "Lambda" -> {
-      params       := expr_lambda_params(expr)
-      lam_stmts    := expr_lambda_stmts(expr)
-      fe           := expr_lambda_final(expr)
-      explicit_gen := expr_lambda_generics(expr)
-      // Check: explicit generics + untyped params in same fn is an error
-      mixing_errs := if (len(explicit_gen) > 0) {
-        has_untyped := false
-        pi2 := 0
-        pn2 := len(params)
-        while (pi2 < pn2) {
-          p := params[pi2]
-          if (p.name != "_") {
-            if (p.ty.is_none()) { has_untyped := true }
-          }
-          pi2 := pi2 + 1
-        }
-        if (has_untyped) {
-          errs_one("SEMA ERROR: cannot mix explicit <T:...> generics with implicit untyped params in same function")
-        } else {
-          errs_empty()
-        }
-      } else {
-        errs_empty()
-      }
-      env2       := scope_clone(env)
-      pn := len(params)
-      pi := 0
-      while (pi < pn) {
-        env2 := scope_insert(env2, params[pi].name)
-        pi := pi + 1
-      }
-      lam_errs  := check_stmts(env2, lam_stmts)
-      env_final := stmts_bound(env2, lam_stmts)
-      errs_join(mixing_errs, errs_join(lam_errs, check_expr(env_final, fe)))
-    }
-    "LoadRon" -> check_expr(env, expr_loadron_path(expr))
-    "SaveRon" -> errs_join(check_expr(env, expr_saveron_data(expr)), check_expr(env, expr_saveron_path(expr)))
-    "TryUnwrap" -> check_expr(env, expr_tryunwrap_expr(expr))
+    Expr.EarlyReturn(_) -> check_expr(env, expr_earlyreturn_val(expr))
+    Expr.LoadRon(_, _) -> check_expr(env, expr_loadron_path(expr))
+    Expr.SaveRon(_, _) -> errs_join(check_expr(env, expr_saveron_data(expr)), check_expr(env, expr_saveron_path(expr)))
+    Expr.TryUnwrap(_) -> check_expr(env, expr_tryunwrap_expr(expr))
     _ -> errs_empty()
   }
 }
@@ -456,7 +458,7 @@ check_arm := (env: Scope, arm: MatchArm) -> @[str] {
 // skip_undef is true.
 
 run_sema := (prog: @[Stmt], imported_list: @[str], skip_undef: bool) -> @[str] {
-  builtins := scope_from_list(@["print", "str", "int", "float", "bool", "Ok", "Err", "Some"])
+  builtins := scope_from_list(@["print", "str", "int", "float", "bool", "Ok", "Err", "Some", "Char"])
 
   top_names := scope_new()
   pn := len(prog)

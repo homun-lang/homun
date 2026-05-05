@@ -235,6 +235,105 @@ fn test_example_explicit_generics() {
 }
 
 #[test]
+fn test_example_box_match() {
+    let out = compile_and_run(Path::new("_site/examples/box_match.hom"));
+    assert!(
+        out.contains("head=7"),
+        "box_match should print head=7, got: {}",
+        out
+    );
+    assert!(
+        out.contains("empty=-1"),
+        "box_match should print empty=-1, got: {}",
+        out
+    );
+    assert!(
+        out.contains("leaf=42"),
+        "box_match should print leaf=42, got: {}",
+        out
+    );
+    assert!(
+        out.contains("branch=99"),
+        "box_match should print branch=99, got: {}",
+        out
+    );
+    assert!(
+        out.contains("len_cons=1"),
+        "box_match should print len_cons=1, got: {}",
+        out
+    );
+    assert!(
+        out.contains("len_nil=0"),
+        "box_match should print len_nil=0, got: {}",
+        out
+    );
+    assert!(
+        out.contains("size_leaf=1"),
+        "box_match should print size_leaf=1, got: {}",
+        out
+    );
+    assert!(
+        out.contains("size_branch=1"),
+        "box_match should print size_branch=1, got: {}",
+        out
+    );
+}
+
+#[test]
+fn test_example_cross_file_box_match() {
+    let out = compile_and_run(Path::new("tests/examples/cross_file_box_match/main.hom"));
+    assert!(
+        out.contains("lit=7"),
+        "cross_file_box_match should print lit=7, got: {}",
+        out
+    );
+    assert!(
+        out.contains("add_leaf=5"),
+        "cross_file_box_match should print add_leaf=5, got: {}",
+        out
+    );
+}
+
+#[test]
+fn test_example_char_builtins() {
+    let out = compile_and_run(Path::new("tests/examples/char_builtins/char_builtins.hom"));
+    for label in ["ok: is_alpha", "ok: is_digit", "ok: is_alnum", "ok: is_ws"] {
+        assert!(
+            out.contains(label),
+            "char_builtins should print {label}, got: {out}"
+        );
+    }
+    assert!(
+        !out.contains("FAIL"),
+        "char_builtins should have no failures, got: {out}"
+    );
+}
+
+#[test]
+fn test_example_set_dict_mut() {
+    let out = compile_and_run(Path::new("tests/examples/set_dict_mut/set_dict_mut.hom"));
+    for label in [
+        "set_add ok",
+        "set_remove ok",
+        "set_remove_missing ok",
+        "set_clear ok",
+        "dict_insert ok",
+        "dict_remove ok",
+        "dict_remove_missing ok",
+        "dict_clear ok",
+    ] {
+        assert!(
+            out.contains(label),
+            "set_dict_mut should print {label}, got: {out}"
+        );
+    }
+    assert!(
+        !out.contains("FAIL"),
+        "set_dict_mut should have no failures, got: {out}"
+    );
+}
+
+#[test]
 fn test_example_struct_destruct() {
     let out = compile_and_run(Path::new("_site/examples/struct_destruct.hom"));
     assert!(
