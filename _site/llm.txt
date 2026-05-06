@@ -347,6 +347,34 @@ Each helper inspects the FIRST character only; multi-char inputs are
 classified by their first char. Empty string returns false.
 `is_alnum` treats `_` as alnum to match Homun identifier continuation.
 
+### `use fs` — Filesystem Helpers
+```hom
+use fs
+content := fs_read("src/main.hom")       // read entire file as str ("" if missing)
+fs_write(".tmp/out.txt", "hello")         // write/overwrite file
+exists := fs_exists(".tmp/out.txt")       // bool — true if path exists
+is_dir := fs_is_dir("src/")              // bool — true if path is a directory
+```
+**API**:
+- `fs_read(path: str) -> str` — read entire file; returns "" if missing
+- `fs_write(path: str, content: str) -> _` — write/overwrite file
+- `fs_exists(path: str) -> bool` — true if path exists on disk
+- `fs_is_dir(path: str) -> bool` — true if path is an existing directory
+
+### `use path` — Path Manipulation Helpers
+```hom
+use path
+full := path_join("src", "main.hom")             // "src/main.hom"
+parent := path_parent("src/main.hom")            // "src"
+canonical := path_canonicalize("./src/../lib")   // absolute resolved path
+stripped := path_strip_prefix("/home/user/proj", "/home/user")  // "proj"
+```
+**API**:
+- `path_join(base: str, rel: str) -> str` — join path segments
+- `path_parent(path: str) -> str` — parent directory of path
+- `path_canonicalize(path: str) -> str` — resolve to absolute path (follows symlinks)
+- `path_strip_prefix(path: str, prefix: str) -> str` — remove leading prefix; returns path unchanged if prefix doesn't match
+
 ### `use std` includes IO
 ```hom
 use std

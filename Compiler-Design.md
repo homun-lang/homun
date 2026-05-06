@@ -203,6 +203,8 @@ Homun-Lang/
 ├── Compiler-Design.md
 ├── Dockerfile           — cross-compilation (linux x86_64, aarch64, windows)
 ├── Dockerfile.wasm      — WASM build (wasm32-wasi)
+├── gen/
+│   └── main_entry.rs    — generated bin shim (build.rs writes; tracked)
 ├── hom-std/             — runtime library source (embedded in homunc at build time)
 │   ├── builtin.rs       — macros (range!, len!, filter!, map!, dict!, set!, slice!)
 │   ├── std/             — standard library (str, math, collection, dict, stack, deque, io)
@@ -210,20 +212,24 @@ Homun-Lang/
 │   ├── heap.rs          — priority queue
 │   ├── chars.rs         — character classification
 │   ├── str_ext.rs       — string utilities
-│   └── dict.rs          — HashMap helpers
+│   ├── dict.rs          — HashMap helpers
+│   ├── set.rs           — set mutation helpers
+│   ├── fs.rs            — filesystem helpers
+│   └── path.rs          — path manipulation helpers
 ├── src/
-│   ├── main.rs          — thin wrapper calling main_hom::main()
 │   ├── build.rs         — bootstraps .hom compilation, generates runtime.rs
 │   ├── lib.rs           — wires compiled .hom modules + embedded runtime
-│   ├── ast.rs           — abstract syntax tree types (Rust)
+│   ├── ast.hom          — AST types (self-hosted, v0.84)
 │   ├── main.hom         — CLI entry point (self-hosted)
 │   ├── lexer.hom        — tokeniser (self-hosted)
 │   ├── parser.hom       — recursive-descent parser (self-hosted)
 │   ├── resolver.hom     — multi-file dependency resolution (self-hosted)
 │   ├── sema.hom         — semantic analysis (self-hosted)
 │   ├── codegen.hom      — Rust code emitter (self-hosted)
+│   ├── scope.hom        — scope management (self-hosted)
+│   ├── scope_imp.rs     — Rust helpers for scope.hom
 │   ├── *_imp.rs         — Rust helpers for each .hom module
-│   └── dep/             — shared Rust helpers (AST accessors, codegen helpers, scope)
+│   └── dep/             — shared Rust helpers (codegen_helpers, mod). Note: accessor layer removed v0.84; scope migrated to src/scope.hom v0.83.
 ├── tests/
 │   ├── examples.rs      — compiles + runs _site/examples/*.hom
 │   ├── hom_std.rs       — compiles + runs runtime test .hom files

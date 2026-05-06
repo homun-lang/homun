@@ -72,7 +72,7 @@ print_help := () -> _ {
   print_str("  * Collections            @[], @{k:v}, @{a,b}")
   print_str("  * Pattern match          match x { ... }")
   print_str("  * if/else, for, while")
-  print_str("  * break => value         for ... do { break => val }")
+  print_str("  * Early return         => val")
   print_str("  * Structs & Enums")
   print("  * String interpolation   Hello ${ver}")
   print("  * RON load/save")

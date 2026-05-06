@@ -584,7 +584,10 @@ All runtime libraries are embedded in the `homunc` binary. No external files or 
 use std    // provides: range, len, filter, map, reduce, split, join, abs, min, max, ...
 use re     // regex: re_match, re_is_match
 use heap   // priority queue: heap_new, heap_push, heap_pop, heap_len, heap_is_empty
-use chars  // char utils: is_alpha, is_digit, is_alnum, is_space
+use chars  // char utils: is_alpha, is_digit, is_alnum, is_whitespace, is_newline
+use set    // set mutation: set_new, set_add, set_remove, set_clear (see llm.txt for full spec)
+use fs     // filesystem: fs_read, fs_write, fs_exists, fs_is_dir
+use path   // path utils: path_join, path_parent, path_canonicalize, path_strip_prefix
 ```
 
 **Standalone usage** — just compile and run:
