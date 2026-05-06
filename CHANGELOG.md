@@ -6,6 +6,21 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.86 — 2026-05-05 — `chars` consolidation, kill `src/main.rs`, hoist hom-std tests
+
+Consumed v0.85 features in a few targeted source moves; the deeper migrations (R4c parser_imp, R6 resolver, Box<T>/Lambda accessor sweep) hit the 900s worker timeout and stayed in `debugging` for next cycle.
+
+- `hom-std/chars.rs`: replaced the existing `impl AsRef<str>` predicates with the single-char-String versions that `lexer_imp.rs` was carrying (`is_alpha`, `is_digit`, `is_alnum` (now treats `_` as alnum), renamed `is_ws` → `is_whitespace`, added `is_newline`); src/lexer.hom now `use chars` and the 5 helpers are gone from `lexer_imp.rs`. `build.rs` wraps the embedded chars module in `pub mod chars { ... }` so it doesn't collide with `std/str.rs`'s same-named predicates
+- `src/main.rs` deleted: `build.rs` writes a 3-line shim to `gen/main_entry.rs` early in `main()`, Cargo `[[bin]].path = "gen/main_entry.rs"`, `gen/` gitignored. Entry module now lives entirely in `main.hom` + `main_imp.rs`
+- `hom-std/{dict,fs,path,re,set,str_ext}.rs`: 623 lines of inline `#[cfg(test)] mod tests` blocks moved to `tests/std-tests/`. New files `test_set.rs`, `test_fs.rs`, `test_path.rs` created for the F11 set + the previously-untested fs/path modules; `test_dict.rs` extended with the v0.85 mutation helpers
+- `tests/examples/char_builtins/`: smoke test updated for new `chars` API surface (`is_whitespace`, `is_newline`, `is_alnum("_") == true`)
+- `_site/llm.txt`: chars section reflects new predicate set
+- 175 tests pass, `cargo fmt` + `cargo clippy -- -D warnings` clean
+- Hom:Rs ratio unchanged at **1.53** — the migration tickets that would have moved the needle (R4c parser_imp, R6 resolver, Box<T>/Lambda accessor sweep) timed out at 900s and stayed in `debugging`; carry to v0.87
+- Bot autonomy: rn=53/56/57 left in `debugging` after worker timeout, rn=51/52/54/55/58/59 merged
+
+---
+
 ### v0.85 — 2026-05-05 — Direct-match Expr/TypeExpr dispatch, set/dict mutation stdlib
 
 Pushed direct-match dispatch into the two remaining holdouts (`check_expr` in `sema.hom`, `cg_expr`/`codegen_type` in `codegen.hom`) and shipped the missing in-place mutation stdlib for sets and dicts.

@@ -134,3 +134,47 @@ fn test_clone_original_independent() {
     original.insert("k".to_string(), 2);
     assert_eq!(cloned["k"], 1);
 }
+
+#[test]
+fn test_insert_adds_entry() {
+    let mut d: HashMap<String, i32> = HashMap::new();
+    dict_insert(&mut d, "k".to_string(), 1);
+    dict_insert(&mut d, "j".to_string(), 2);
+    assert_eq!(d.len(), 2);
+    assert_eq!(d["k"], 1);
+    assert_eq!(d["j"], 2);
+}
+
+#[test]
+fn test_insert_overwrites() {
+    let mut d: HashMap<String, i32> = HashMap::new();
+    dict_insert(&mut d, "k".to_string(), 1);
+    dict_insert(&mut d, "k".to_string(), 99);
+    assert_eq!(d.len(), 1);
+    assert_eq!(d["k"], 99);
+}
+
+#[test]
+fn test_remove_existing_returns_old_value() {
+    let mut d: HashMap<String, i32> = HashMap::new();
+    dict_insert(&mut d, "k".to_string(), 42);
+    let old = dict_remove(&mut d, "k".to_string());
+    assert_eq!(old, Some(42));
+    assert!(d.is_empty());
+}
+
+#[test]
+fn test_remove_missing_returns_none() {
+    let mut d: HashMap<String, i32> = HashMap::new();
+    let old = dict_remove(&mut d, "ghost".to_string());
+    assert_eq!(old, None);
+}
+
+#[test]
+fn test_clear_empties() {
+    let mut d: HashMap<String, i32> = HashMap::new();
+    dict_insert(&mut d, "a".to_string(), 1);
+    dict_insert(&mut d, "b".to_string(), 2);
+    dict_clear(&mut d);
+    assert!(d.is_empty());
+}

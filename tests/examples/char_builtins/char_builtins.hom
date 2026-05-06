@@ -15,15 +15,21 @@ main := () -> _ {
     print("FAIL: is_digit")
   }
 
-  if (is_alnum("a") and is_alnum("7") and not is_alnum(" ")) {
+  if (is_alnum("a") and is_alnum("7") and is_alnum("_") and not is_alnum(" ")) {
     print("ok: is_alnum")
   } else {
     print("FAIL: is_alnum")
   }
 
-  if (is_ws(" ") and is_ws("\t") and not is_ws("a")) {
-    print("ok: is_ws")
+  if (is_whitespace(" ") and is_whitespace("\t") and not is_whitespace("a")) {
+    print("ok: is_whitespace")
   } else {
-    print("FAIL: is_ws")
+    print("FAIL: is_whitespace")
+  }
+
+  if (is_newline("\n") and not is_newline(" ") and not is_newline("a")) {
+    print("ok: is_newline")
+  } else {
+    print("FAIL: is_newline")
   }
 }

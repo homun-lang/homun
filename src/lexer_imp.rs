@@ -21,12 +21,8 @@
 // Keyword dispatch:
 //   ls_keyword_token(s, pos) -> Token
 //
-// Char-testing helpers:
-//   is_alpha(c) -> bool
-//   is_digit(c) -> bool
-//   is_alnum(c) -> bool      — alphanumeric or '_'
-//   is_whitespace(c) -> bool
-//   is_newline(c) -> bool
+// Char-testing helpers (is_alpha, is_digit, is_alnum, is_whitespace,
+// is_newline) live in hom-std/chars.rs — import via `use chars` in lexer.hom.
 //
 // Operator dispatch (now return TokenKind / Option<TokenKind>):
 //   ls_try_multi_op(s) -> (TokenKind, i64)   — (Eof, 0) = no match
@@ -87,40 +83,6 @@ pub fn make_token_char_from_str(val: String, pos: Pos) -> Token {
         kind: TokenKind::Char(val.chars().next().unwrap_or('\0')),
         pos,
     }
-}
-
-// ── Char-testing helpers ──────────────────────────────────────────────────────
-
-/// True if c is an alphabetic character (Unicode-aware, matches Homun ident start).
-/// Takes a 1-char String (as returned by ls_cur/ls_peek) for .hom interop.
-pub fn is_alpha(c: String) -> bool {
-    c.chars().next().is_some_and(|ch| ch.is_alphabetic())
-}
-
-/// True if c is an ASCII decimal digit.
-/// Takes a 1-char String (as returned by ls_cur/ls_peek) for .hom interop.
-pub fn is_digit(c: String) -> bool {
-    c.chars().next().is_some_and(|ch| ch.is_ascii_digit())
-}
-
-/// True if c is alphanumeric or underscore (matches Homun ident continuation).
-/// Takes a 1-char String (as returned by ls_cur/ls_peek) for .hom interop.
-pub fn is_alnum(c: String) -> bool {
-    c.chars()
-        .next()
-        .is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
-}
-
-/// True if c is Unicode whitespace.
-/// Takes a 1-char String (as returned by ls_cur/ls_peek) for .hom interop.
-pub fn is_whitespace(c: String) -> bool {
-    c.chars().next().is_some_and(|ch| ch.is_whitespace())
-}
-
-/// True if c is a newline character.
-/// Takes a 1-char String (as returned by ls_cur/ls_peek) for .hom interop.
-pub fn is_newline(c: String) -> bool {
-    c == "\n"
 }
 
 // ── LexState — mutable state machine for the lexer ───────────────────────────

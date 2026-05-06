@@ -1,7 +1,11 @@
 // test_chars.hom — Integration test for chars.rs (character classification)
 //
 // Exercises every exported function from chars.rs via the .hom → rustc pipeline:
-//   is_alpha, is_alnum, is_digit, is_ws
+//   is_alpha, is_alnum, is_digit, is_whitespace, is_newline
+//
+// Helpers inspect the FIRST character only — multi-char inputs are
+// classified by their first char. is_alnum treats '_' as alnum to match
+// Homun identifier continuation. Empty string returns false.
 //
 // Uses direct if/else + print instead of a check(cond, msg) helper to avoid
 // the &str vs String mismatch: .hom emits string literals as &str but functions
@@ -30,9 +34,9 @@ main := () -> _ {
     print("FAIL: is_alpha uppercase 'Z'")
   }
   if (is_alpha("hello")) {
-    print("  ok: is_alpha multi-char alpha string")
+    print("  ok: is_alpha multi-char string (first char alpha)")
   } else {
-    print("FAIL: is_alpha multi-char alpha string")
+    print("FAIL: is_alpha multi-char string (first char alpha)")
   }
   if (not is_alpha("3")) {
     print("  ok: is_alpha false for digit '3'")
@@ -43,11 +47,6 @@ main := () -> _ {
     print("  ok: is_alpha false for space")
   } else {
     print("FAIL: is_alpha false for space")
-  }
-  if (not is_alpha("a1")) {
-    print("  ok: is_alpha false for alpha+digit mix")
-  } else {
-    print("FAIL: is_alpha false for alpha+digit mix")
   }
   if (not is_alpha("")) {
     print("  ok: is_alpha false for empty string")
@@ -67,24 +66,19 @@ main := () -> _ {
     print("FAIL: is_alnum digit '9'")
   }
   if (is_alnum("foo123")) {
-    print("  ok: is_alnum mixed alpha+digit string")
+    print("  ok: is_alnum multi-char string (first char alnum)")
   } else {
-    print("FAIL: is_alnum mixed alpha+digit string")
+    print("FAIL: is_alnum multi-char string (first char alnum)")
   }
-  if (not is_alnum("_")) {
-    print("  ok: is_alnum false for underscore")
+  if (is_alnum("_")) {
+    print("  ok: is_alnum true for underscore (ident continuation)")
   } else {
-    print("FAIL: is_alnum false for underscore")
+    print("FAIL: is_alnum true for underscore (ident continuation)")
   }
   if (not is_alnum(" ")) {
     print("  ok: is_alnum false for space")
   } else {
     print("FAIL: is_alnum false for space")
-  }
-  if (not is_alnum("a_b")) {
-    print("  ok: is_alnum false for identifier with underscore")
-  } else {
-    print("FAIL: is_alnum false for identifier with underscore")
   }
   if (not is_alnum("")) {
     print("  ok: is_alnum false for empty string")
@@ -104,9 +98,9 @@ main := () -> _ {
     print("FAIL: is_digit '9'")
   }
   if (is_digit("123")) {
-    print("  ok: is_digit multi-digit string '123'")
+    print("  ok: is_digit multi-char string (first char digit)")
   } else {
-    print("FAIL: is_digit multi-digit string '123'")
+    print("FAIL: is_digit multi-char string (first char digit)")
   }
   if (not is_digit("a")) {
     print("  ok: is_digit false for letter 'a'")
@@ -118,47 +112,64 @@ main := () -> _ {
   } else {
     print("FAIL: is_digit false for space")
   }
-  if (not is_digit("1a")) {
-    print("  ok: is_digit false for digit+letter mix")
-  } else {
-    print("FAIL: is_digit false for digit+letter mix")
-  }
   if (not is_digit("")) {
     print("  ok: is_digit false for empty string")
   } else {
     print("FAIL: is_digit false for empty string")
   }
 
-  // ── is_ws ───────────────────────────────────────────────────────────────────
-  if (is_ws(" ")) {
-    print("  ok: is_ws space")
+  // ── is_whitespace ───────────────────────────────────────────────────────────
+  if (is_whitespace(" ")) {
+    print("  ok: is_whitespace space")
   } else {
-    print("FAIL: is_ws space")
+    print("FAIL: is_whitespace space")
   }
-  if (is_ws("   ")) {
-    print("  ok: is_ws multiple spaces")
+  if (is_whitespace("\t")) {
+    print("  ok: is_whitespace tab")
   } else {
-    print("FAIL: is_ws multiple spaces")
+    print("FAIL: is_whitespace tab")
   }
-  if (not is_ws("a")) {
-    print("  ok: is_ws false for letter 'a'")
+  if (is_whitespace("   ")) {
+    print("  ok: is_whitespace multi-char (first char space)")
   } else {
-    print("FAIL: is_ws false for letter 'a'")
+    print("FAIL: is_whitespace multi-char (first char space)")
   }
-  if (not is_ws("1")) {
-    print("  ok: is_ws false for digit '1'")
+  if (not is_whitespace("a")) {
+    print("  ok: is_whitespace false for letter 'a'")
   } else {
-    print("FAIL: is_ws false for digit '1'")
+    print("FAIL: is_whitespace false for letter 'a'")
   }
-  if (not is_ws(" a")) {
-    print("  ok: is_ws false for space+letter mix")
+  if (not is_whitespace("1")) {
+    print("  ok: is_whitespace false for digit '1'")
   } else {
-    print("FAIL: is_ws false for space+letter mix")
+    print("FAIL: is_whitespace false for digit '1'")
   }
-  if (not is_ws("")) {
-    print("  ok: is_ws false for empty string")
+  if (not is_whitespace("")) {
+    print("  ok: is_whitespace false for empty string")
   } else {
-    print("FAIL: is_ws false for empty string")
+    print("FAIL: is_whitespace false for empty string")
+  }
+
+  // ── is_newline ──────────────────────────────────────────────────────────────
+  if (is_newline("\n")) {
+    print("  ok: is_newline true for '\\n'")
+  } else {
+    print("FAIL: is_newline true for '\\n'")
+  }
+  if (not is_newline(" ")) {
+    print("  ok: is_newline false for space")
+  } else {
+    print("FAIL: is_newline false for space")
+  }
+  if (not is_newline("a")) {
+    print("  ok: is_newline false for letter 'a'")
+  } else {
+    print("FAIL: is_newline false for letter 'a'")
+  }
+  if (not is_newline("")) {
+    print("  ok: is_newline false for empty string")
+  } else {
+    print("FAIL: is_newline false for empty string")
   }
 
   print("=== done ===")

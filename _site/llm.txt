@@ -337,11 +337,15 @@ Read-only set membership is already covered by the `in` operator and `len(s)`.
 ### `use chars` — Character Classification (string-based)
 ```hom
 use chars
-is_alpha("a")                   // true (works with str or char)
-is_alnum("3")                   // true
-is_digit("7")                   // true
-is_ws(" ")                      // true
+is_alpha("a")                   // true — first char alphabetic
+is_alnum("3")                   // true — first char alphanumeric or '_'
+is_digit("7")                   // true — first char ASCII digit
+is_whitespace(" ")              // true — first char Unicode whitespace
+is_newline("\n")                // true — exactly "\n"
 ```
+Each helper inspects the FIRST character only; multi-char inputs are
+classified by their first char. Empty string returns false.
+`is_alnum` treats `_` as alnum to match Homun identifier continuation.
 
 ### `use std` includes IO
 ```hom

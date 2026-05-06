@@ -109,6 +109,9 @@ target/
 **/*.rs.bk
 Cargo.lock
 
+# Generated bin entry shim (written by src/build.rs)
+/gen/
+
 # Generated .rs files (compiled from .hom)
 
 # Temp

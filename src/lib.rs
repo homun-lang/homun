@@ -73,6 +73,10 @@ pub mod parser_hom {
 pub mod lexer_hom {
     use crate::dep::*;
     use crate::runtime::*;
+    // chars helpers (is_alpha/is_digit/is_alnum/is_whitespace/is_newline)
+    // — pulled from the runtime sub-module since std/str.rs in runtime root
+    // also exports is_alpha/is_digit/is_alnum with different (all-char) semantics.
+    use crate::runtime::chars::{is_alnum, is_alpha, is_digit, is_newline, is_whitespace};
     include!(concat!(env!("OUT_DIR"), "/lexer.rs"));
 }
 
@@ -137,14 +141,17 @@ mod hom_tests {
 
     mod set_mod {
         include!("../hom-std/set.rs");
+        include!("../tests/std-tests/test_set.rs");
     }
 
     mod path_mod {
         include!("../hom-std/path.rs");
+        include!("../tests/std-tests/test_path.rs");
     }
 
     mod fs_mod {
         include!("../hom-std/fs.rs");
+        include!("../tests/std-tests/test_fs.rs");
     }
 }
 

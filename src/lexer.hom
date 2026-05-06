@@ -89,6 +89,7 @@ TokenKind := enum {
 // `use lexer_imp` sets has_rs_dep=true so homunc skips undefined-reference
 // checks for helper functions available at include!() time.
 use lexer_imp
+use chars
 
 
 // ─── ls_skip_line_comment ────────────────────────────────────────────────────

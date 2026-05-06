@@ -297,7 +297,13 @@ fn test_example_cross_file_box_match() {
 #[test]
 fn test_example_char_builtins() {
     let out = compile_and_run(Path::new("tests/examples/char_builtins/char_builtins.hom"));
-    for label in ["ok: is_alpha", "ok: is_digit", "ok: is_alnum", "ok: is_ws"] {
+    for label in [
+        "ok: is_alpha",
+        "ok: is_digit",
+        "ok: is_alnum",
+        "ok: is_whitespace",
+        "ok: is_newline",
+    ] {
         assert!(
             out.contains(label),
             "char_builtins should print {label}, got: {out}"
