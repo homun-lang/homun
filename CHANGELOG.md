@@ -6,6 +6,23 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.87 — 2026-05-06 — Audit follow-ups: codegen dedupe, heap mut, _imp.rs shrink, doc/code drift cleanup
+
+Nine-ticket batch from the v0.86 audit, executed by the autonomous claude-bot. 27 tests pass, `cargo fmt` + `cargo clippy -- -D warnings` clean. Net diff: **+220 / −374** across 19 files.
+
+- **codegen.hom dedupe** (tickets 4-5): extracted `cg_bind_common` + `cg_top_bind` to merge `Stmt.Bind` and `Stmt.BindMut` arms (byte-identical apart from `attrs` and `let mut`); extracted `cg_str_or_expr` and `infer_const_ty` helpers; collapsed the 5-deep `Str/Int/Float/Bool/Char` ladder to a direct match. Killed ~12 `expr_kind` callsites
+- **`hom-std/heap.rs` Rc<RefCell> migration** (ticket 6): replaced `Rc<RefCell<BinaryHeap<...>>>` with plain `BinaryHeap`, registered as `&mut Heap` callee like v0.85's set/dict mutators. Closes CLAUDE.md TODO #2
+- **`_imp.rs` shrink** (ticket 9): migrated 11 pure-logic helpers from `parser_imp.rs` and `lexer_imp.rs` to `.hom` (`vec_concat_*`, `pos_inc_col`/`add_col`/`newline`, `unescape_char`, `is_upper_first_str`, `neg_i64`/`neg_f64`, `names_to_pats`); added `is_upper` to `hom-std/chars.rs`. Partial close of CLAUDE.md TODO #3
+- **`src/lib.rs` cleanup** (tickets 7-8): collapsed 6 `mod X_mod { include!(); include!(); }` blocks via `embed_test_mod!` macro_rules!; removed 4 obsolete `#![allow(...)]` lints (`clippy::single_match`, `almost_swapped`, `iter_overeager_cloned`, `bool_comparison`)
+- **Dead code** (ticket 3): deleted two zero-caller `dep/codegen_helpers.rs` helpers (`clear_variant_field_types`, `derive_attrs`)
+- **Doc/code drift fixup** (ticket 1): `Compiler-Design.md` tree refreshed (removed deleted `main.rs`/`ast.rs`, added `gen/main_entry.rs`, `ast.hom`, `scope.hom`, `set.rs`/`fs.rs`/`path.rs`); `CLAUDE.md` TODO #1 retired (already shipped v0.84); `_imp.rs` ratio refreshed; `README.md` `is_space → is_whitespace`+`is_newline`; `_site/llm.txt` `use fs`/`use path` sections added
+- **`.tmp/` cleanup** (ticket 2): reclaimed ~14 MB of stale binaries, merged-version patches, March scratch
+- **CI fix**: `gen/main_entry.rs` shim now tracked so `cargo fmt --check` works on fresh clone (Dockerfile.test, WASM job)
+
+Hom:Rs LOC ratio nudged from 1.53 toward 1.55+; `parser_imp.rs` shrunk 47 lines. Bot autonomy: 9/9 tickets shipped over ~1h29min, no debugging timeouts (TIMEOUT bumped to 1800s mid-run).
+
+---
+
 ### v0.86 — 2026-05-05 — `chars` consolidation, kill `src/main.rs`, hoist hom-std tests
 
 Consumed v0.85 features in a few targeted source moves; the deeper migrations (R4c parser_imp, R6 resolver, Box<T>/Lambda accessor sweep) hit the 900s worker timeout and stayed in `debugging` for next cycle.
