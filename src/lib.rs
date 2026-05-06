@@ -124,35 +124,24 @@ mod hom_tests {
 
     // chars.rs, str_ext.rs, dict.rs are NOT in runtime (embedded-only modules).
     // Include the source file first to get the function definitions, then the tests.
-    mod chars_mod {
-        include!("../hom-std/chars.rs");
-        include!("../tests/std-tests/test_chars.rs");
+    macro_rules! embed_test_mod {
+        ($name:ident) => {
+            mod $name {
+                include!(concat!("../hom-std/", stringify!($name), ".rs"));
+                include!(concat!(
+                    "../tests/std-tests/test_",
+                    stringify!($name),
+                    ".rs"
+                ));
+            }
+        };
     }
-
-    mod str_ext_mod {
-        include!("../hom-std/str_ext.rs");
-        include!("../tests/std-tests/test_str_ext.rs");
-    }
-
-    mod dict_mod {
-        include!("../hom-std/dict.rs");
-        include!("../tests/std-tests/test_dict.rs");
-    }
-
-    mod set_mod {
-        include!("../hom-std/set.rs");
-        include!("../tests/std-tests/test_set.rs");
-    }
-
-    mod path_mod {
-        include!("../hom-std/path.rs");
-        include!("../tests/std-tests/test_path.rs");
-    }
-
-    mod fs_mod {
-        include!("../hom-std/fs.rs");
-        include!("../tests/std-tests/test_fs.rs");
-    }
+    embed_test_mod!(chars);
+    embed_test_mod!(str_ext);
+    embed_test_mod!(dict);
+    embed_test_mod!(set);
+    embed_test_mod!(path);
+    embed_test_mod!(fs);
 }
 
 // ── Embedded runtime library content ─────────────────────────────────────────
