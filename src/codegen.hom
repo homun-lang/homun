@@ -739,11 +739,7 @@ cg_arm := (i: int, sc: Scope, arm: MatchArm) -> str {
     none -> ""
     Some(g) -> " if " + cg_expr(i, sc, g)
   }
-  body_d := body
-  body_s := match body_d {
-    Expr.Str(s) -> codegen_string(s) + ".to_string()"
-    _ -> cg_expr(i + 1, sc, body)
-  }
+  body_s := cg_struct_val(i + 1, sc, body)
   box_vars := pat_box_var_names(p)
   if (len(box_vars) == 0) {
     "${ind(i + 1)}${pat_s}${guard_s} => ${body_s},"
@@ -1129,11 +1125,7 @@ cg_stmts := (i: int, sc: Scope, stmts: @[Stmt]) -> (@[str], Scope) {
 cg_body := (i: int, sc: Scope, stmts: @[Stmt], fe: Expr) -> @[str] {
   body_sc := scope_clone(sc)
   lines, body_sc := cg_stmts(i, body_sc, stmts)
-  fe_d := fe
-  fe_s := match fe_d {
-    Expr.Str(s) -> codegen_string(s) + ".to_string()"
-    _ -> cg_expr(i, body_sc, fe)
-  }
+  fe_s := cg_struct_val(i, body_sc, fe)
   fe_line := "${ind(i)}${fe_s}"
   push(lines, fe_line)
   lines
@@ -1280,10 +1272,9 @@ cg_stmt := (i: int, sc: Scope, stmt: Stmt) -> str {
       }
     }
     Stmt.Assign(lhs, rhs) -> {
-      rhs_s := if (expr_kind(lhs) == "Field" and expr_kind(rhs) == "Str") {
-        codegen_string(expr_str_val(rhs)) + ".to_string()"
-      } else {
-        cg_expr(i, sc, rhs)
+      rhs_s := match lhs {
+        Expr.Field(_, _) -> cg_struct_val(i, sc, rhs)
+        _ -> cg_expr(i, sc, rhs)
       }
       "${ind(i)}${cg_lvalue(i, sc, lhs)} = ${rhs_s};"
     }
@@ -1547,11 +1538,7 @@ codegen_top_level_stmt := (i: int, stmt: Stmt, rs_content: RsContent) -> str {
     Stmt.ThreadLocal(tl_name, tl_e) -> {
       upper := to_upper(tl_name)
       ty_str := tl_infer_type(tl_e)
-      init_str := if (expr_kind(tl_e) == "Str") {
-        codegen_string(expr_str_val(tl_e)) + ".to_string()"
-      } else {
-        cg_expr(0, scope_new(), tl_e)
-      }
+      init_str := cg_struct_val(0, scope_new(), tl_e)
       register_thread_local_var(tl_name)
       tl_lines := @[]
       push(tl_lines, "thread_local! {")
