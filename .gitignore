@@ -109,8 +109,10 @@ target/
 **/*.rs.bk
 Cargo.lock
 
-# Generated bin entry shim (written by src/build.rs)
-/gen/
+# Bin entry shim — checked in so Cargo can resolve [[bin]].path on a fresh
+# clone before build.rs runs (CI: Dockerfile.test cargo fmt --check, WASM build).
+# build.rs rewrites this file only if its content differs (idempotent).
+# /gen/  -- DO NOT ignore: see gen/main_entry.rs
 
 # Generated .rs files (compiled from .hom)
 
