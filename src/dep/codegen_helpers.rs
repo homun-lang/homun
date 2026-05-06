@@ -121,11 +121,6 @@ pub fn variant_field_types_known(qual: String) -> bool {
     VARIANT_FIELD_TYPES.with(|s| s.borrow().contains_key(&qual))
 }
 
-/// Clear the variant field-type registry.
-pub fn clear_variant_field_types() {
-    VARIANT_FIELD_TYPES.with(|s| s.borrow_mut().clear());
-}
-
 // ─── Thread-local variable registry ─────────────────────────────────────────
 
 thread_local! {
@@ -149,11 +144,6 @@ pub fn clear_thread_local_vars() {
 }
 
 // ─── Preamble helpers ────────────────────────────────────────────────────────
-
-/// Standard derive attributes for Homun-generated structs and enums.
-pub fn derive_attrs() -> String {
-    "#[derive(Debug, Clone, PartialEq)]".to_string()
-}
 
 /// Format the generic type-parameter clause for a function.
 /// Returns `"<T: Clone, U: Clone>"` when non-empty, or `""` when empty.
