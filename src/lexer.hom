@@ -91,6 +91,18 @@ TokenKind := enum {
 use lexer_imp
 use chars
 
+// Resolve a 1-char string after a backslash: "n" → "\n", "t" → "\t", etc.
+unescape_char := (c: str) -> str {
+  match c {
+    "n" -> "\n"
+    "t" -> "\t"
+    "\\" -> "\\"
+    "\"" -> "\""
+    "'" -> "'"
+    "0" -> "\0"
+    _ -> c
+  }
+}
 
 // ─── ls_skip_line_comment ────────────────────────────────────────────────────
 // Skip from current position to (but not including) the next newline.

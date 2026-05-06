@@ -159,3 +159,17 @@ fn test_is_newline_false() {
     assert!(!is_newline("\r\n".to_string()));
     assert!(!is_newline("".to_string()));
 }
+
+#[test]
+fn test_is_upper_true() {
+    assert!(is_upper("A".to_string()));
+    assert!(is_upper("Z".to_string()));
+    assert!(is_upper("Hello".to_string()));
+}
+
+#[test]
+fn test_is_upper_false() {
+    assert!(!is_upper("a".to_string()));
+    assert!(!is_upper("1".to_string()));
+    assert!(!is_upper("".to_string()));
+}

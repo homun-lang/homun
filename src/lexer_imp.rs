@@ -11,9 +11,6 @@
 //   make_pos(line, col) -> Pos          — i64 args (Homun int → i32 cast)
 //   pos_line(p) -> i64
 //   pos_col(p) -> i64
-//   pos_inc_col(p) -> Pos               — advance col by 1
-//   pos_add_col(p, n) -> Pos            — advance col by n
-//   pos_newline(p) -> Pos               — increment line, reset col to 1
 //
 // Token char helper:
 //   make_token_char_from_str(val, pos) -> Token  — String → char payload
@@ -48,30 +45,6 @@ pub fn pos_line(p: Pos) -> i64 {
 /// Return the column number as i64.
 pub fn pos_col(p: Pos) -> i64 {
     p.col as i64
-}
-
-/// Return a new Pos with col incremented by 1.
-pub fn pos_inc_col(p: Pos) -> Pos {
-    Pos {
-        line: p.line,
-        col: p.col + 1,
-    }
-}
-
-/// Return a new Pos with col incremented by n.
-pub fn pos_add_col(p: Pos, n: i64) -> Pos {
-    Pos {
-        line: p.line,
-        col: p.col + n as i32,
-    }
-}
-
-/// Return a new Pos for the start of the next line (line+1, col=1).
-pub fn pos_newline(p: Pos) -> Pos {
-    Pos {
-        line: p.line + 1,
-        col: 1,
-    }
 }
 
 // ── Token char helper ─────────────────────────────────────────────────────────
@@ -339,20 +312,6 @@ pub fn parse_float_result(s: String) -> (bool, f32) {
     match s.parse::<f32>() {
         Ok(v) => (true, v),
         Err(_) => (false, 0.0),
-    }
-}
-
-/// Resolve a single escape character: 'n' → '\n', 't' → '\t', etc.
-/// Input is a 1-char string after the backslash. Returns the resolved 1-char string.
-pub fn unescape_char(c: String) -> String {
-    match c.as_str() {
-        "n" => "\n".to_string(),
-        "t" => "\t".to_string(),
-        "\\" => "\\".to_string(),
-        "\"" => "\"".to_string(),
-        "'" => "'".to_string(),
-        "0" => "\0".to_string(),
-        _ => c,
     }
 }
 

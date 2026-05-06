@@ -119,12 +119,12 @@ parse_mod_path := () -> @[str] {
   if (ps_has_err()) {
     => @[]
   }
-  path := @[name]
   if (ps_consume("DoubleColon")) {
     rest := parse_mod_path()
-    path := vec_concat_strs(path, rest)
+    @[name] + rest
+  } else {
+    @[name]
   }
-  path
 }
 
 parse_top_bind := () -> Stmt {
@@ -417,13 +417,13 @@ parse_block_bind := () -> Stmt {
     if (ps_check("Assign")) {
       ps_advance()
       rhs := parse_expr()
-      pats := names_to_pats(names)
+      pats := names | map((n) -> { if (n == "_") { Pat.Wild } else { Pat.Var(n) } })
       => Stmt.BindPat(Pat.Tuple(pats), rhs)
     }
     if (ps_check("MutAssign")) {
       ps_advance()
       rhs := parse_expr()
-      pats := names_to_pats(names)
+      pats := names | map((n) -> { if (n == "_") { Pat.Wild } else { Pat.Var(n) } })
       => Stmt.BindPatMut(Pat.Tuple(pats), rhs)
     }
     ps_restore(saved)
@@ -737,7 +737,7 @@ parse_atom := () -> Expr {
   if (k == "Ident") {
     name := ps_peek_ident()
     ps_advance()
-    if (ps_check("LBrace") and is_upper_first_str(name)) {
+    if (ps_check("LBrace") and is_upper(name)) {
       fields := parse_struct_lit_fields()
       => Expr.Struct(some_str(name), fields)
     }
@@ -767,8 +767,7 @@ parse_lambda_or_paren := () -> Expr {
       ps_advance()
       rest := parse_expr_sep("RParen")
       ps_expect("RParen")
-      items := @[e]
-      items := vec_concat_exprs(items, rest)
+      items := @[e] + rest
       Expr.Tuple(items)
     } else {
       ps_expect("RParen")
@@ -1105,12 +1104,12 @@ parse_pat := () -> Pat {
     if (nk == "Int") {
       n := ps_peek_int()
       ps_advance()
-      => Pat.Lit(Expr.Int(neg_i64(n)))
+      => Pat.Lit(Expr.Int(0 - n))
     }
     if (nk == "Float") {
       f := ps_peek_float()
       ps_advance()
-      => Pat.Lit(Expr.Float(neg_f64(f)))
+      => Pat.Lit(Expr.Float(-f))
     }
     ps_set_err("Expected number after '-' in pattern")
     => Pat.Wild

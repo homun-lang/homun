@@ -48,3 +48,8 @@ pub fn is_whitespace(c: String) -> bool {
 pub fn is_newline(c: String) -> bool {
     c == "\n"
 }
+
+/// True if c starts with an ASCII uppercase letter (A–Z).
+pub fn is_upper(c: String) -> bool {
+    c.chars().next().is_some_and(|ch| ch.is_uppercase())
+}

@@ -62,6 +62,9 @@ pub mod parser_hom {
     use crate::dep::*;
     use crate::lexer_hom::{Token, TokenKind};
     use crate::runtime::*;
+    // is_upper: use the first-char-only version from chars, not the all-chars
+    // version from std/str.rs (which replaced is_upper_first_str).
+    use crate::runtime::chars::is_upper;
     include!(concat!(env!("OUT_DIR"), "/parser.rs"));
 }
 

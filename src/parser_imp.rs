@@ -407,53 +407,6 @@ pub fn split_block(stmts: Vec<Stmt>) -> (Vec<Stmt>, Expr) {
     }
 }
 
-/// Convert a list of name strings to Pat values ("_" → Pat::Wild, else Pat::Var).
-pub fn names_to_pats(names: Vec<String>) -> Vec<Pat> {
-    names
-        .into_iter()
-        .map(|n| {
-            if n == "_" {
-                Pat::Wild
-            } else {
-                Pat::Var(n)
-            }
-        })
-        .collect()
-}
-
-/// Negate an i64 value (avoids .hom int literal type mismatch).
-pub fn neg_i64(n: i64) -> i64 {
-    -n
-}
-
-/// Negate an f64 value (avoids .hom float literal type mismatch).
-pub fn neg_f64(f: f64) -> f64 {
-    -f
-}
-
-/// Returns true if the first character is uppercase.
-pub fn is_upper_first_str(s: String) -> bool {
-    s.chars().next().is_some_and(|c| c.is_uppercase())
-}
-
-/// Concatenate two Vec<Pat>.
-pub fn vec_concat_pats(mut a: Vec<Pat>, b: Vec<Pat>) -> Vec<Pat> {
-    a.extend(b);
-    a
-}
-
-/// Concatenate two Vec<Expr>.
-pub fn vec_concat_exprs(mut a: Vec<Expr>, b: Vec<Expr>) -> Vec<Expr> {
-    a.extend(b);
-    a
-}
-
-/// Concatenate two Vec<String>.
-pub fn vec_concat_strs(mut a: Vec<String>, b: Vec<String>) -> Vec<String> {
-    a.extend(b);
-    a
-}
-
 /// Push a (String, Expr) pair onto a Vec (for struct literal fields / dict building).
 pub fn push_name_expr_pair(
     mut pairs: Vec<(String, Expr)>,
