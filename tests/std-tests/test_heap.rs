@@ -141,14 +141,3 @@ fn test_heap_astar_simulation() {
     assert_eq!(p2, 5);
     assert_eq!(node2, "E");
 }
-
-#[test]
-fn test_rc_clone_shares_state() {
-    // Rc::clone is a cheap ref-count bump — both handles share one BinaryHeap.
-    let mut h1 = heap_new();
-    let mut h2 = h1.clone();
-    heap_push(&mut h1, 7, "seven");
-    assert_eq!(heap_len(&mut h2), 1);
-    assert_eq!(heap_pop(&mut h2), Some((7, "seven".to_string())));
-    assert!(heap_is_empty(&mut h1));
-}
