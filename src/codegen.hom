@@ -1432,6 +1432,22 @@ cg_top_fn := (i: int, name: str, explicit_gen: @[str], params: @[Param], ret_ty:
 }
 
 
+// ─── infer_const_ty ───────────────────────────────────────────────────────────
+// Infer the Rust type annotation for a top-level const binding.
+
+infer_const_ty := (e: Expr) -> str {
+  e_ty := e
+  match e_ty {
+    Expr.Str(_)   -> "&str"
+    Expr.Int(_)   -> "i32"
+    Expr.Float(_) -> "f32"
+    Expr.Bool(_)  -> "bool"
+    Expr.Char(_)  -> "char"
+    _             -> "_"
+  }
+}
+
+
 // ─── cg_top_bind ──────────────────────────────────────────────────────────────
 // Shared body for Stmt.Bind / Stmt.BindMut at top level.
 // Pass attrs:=@[] for BindMut callers (BindMut carries no attrs).
@@ -1447,15 +1463,7 @@ cg_top_bind := (i: int, name: str, e: Expr, attrs: @[str]) -> str {
     fn_str := cg_top_fn(i, name, explicit_gen, params, ret_ty, void_mark, lam_stmts, fe2)
     "" + emit_attrs(attrs) + fn_str
   } else {
-    e_ty := e
-    ty_str := match e_ty {
-      Expr.Str(_) -> "&str"
-      Expr.Int(_) -> "i32"
-      Expr.Float(_) -> "f32"
-      Expr.Bool(_) -> "bool"
-      Expr.Char(_) -> "char"
-      _ -> "_"
-    }
+    ty_str := infer_const_ty(e)
     "pub const " + to_upper(name) + ": " + ty_str + " = " + cg_expr(0, scope_new(), e) + ";"
   }
 }
