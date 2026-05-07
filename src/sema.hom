@@ -249,8 +249,8 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
         errs_one("SEMA ERROR: undefined reference '${name}'")
       }
     }
-    Expr.Field(base_e, _) -> check_expr(env, base_e)
-    Expr.Index(base_e, idx_e) -> errs_join(check_expr(env, base_e), check_expr(env, idx_e))
+    Expr.Field(_, _) -> check_expr(env, expr_field_expr(expr))
+    Expr.Index(_, _) -> errs_join(check_expr(env, expr_index_expr(expr)), check_expr(env, expr_index_idx(expr)))
     Expr.Slice(_, _, _, _) -> {
       base_errs := check_expr(env, expr_slice_expr(expr))
       from_opt  := expr_slice_from(expr)
@@ -322,11 +322,12 @@ check_expr := (env: Scope, expr: Expr) -> @[str] {
       }
       errs
     }
-    Expr.BinOp(_, lhs, rhs) -> errs_join(check_expr(env, lhs), check_expr(env, rhs))
-    Expr.Pipe(lhs, rhs) -> errs_join(check_expr(env, lhs), check_expr(env, rhs))
-    Expr.UnOp(_, e) -> check_expr(env, e)
-    Expr.Call(f, args) -> {
-      f_errs := check_expr(env, f)
+    Expr.BinOp(_, _, _) -> errs_join(check_expr(env, expr_binop_lhs(expr)), check_expr(env, expr_binop_rhs(expr)))
+    Expr.Pipe(_, _) -> errs_join(check_expr(env, expr_pipe_lhs(expr)), check_expr(env, expr_pipe_rhs(expr)))
+    Expr.UnOp(_, _) -> check_expr(env, expr_unop_expr(expr))
+    Expr.Call(_, _) -> {
+      f_errs := check_expr(env, expr_call_func(expr))
+      args := expr_call_args(expr)
       an := len(args)
       ai := 0
       arg_errs := errs_empty()

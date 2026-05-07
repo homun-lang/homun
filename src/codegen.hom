@@ -421,8 +421,8 @@ cg_lvalue := (i: int, sc: Scope, e: Expr) -> str {
   e_d := e
   match e_d {
     Expr.Var(n) -> n
-    Expr.Field(base, name) -> cg_lvalue(i, sc, base) + "." + name
-    Expr.Index(base, idx) -> cg_lvalue(i, sc, base) + "[" + cg_expr(i, sc, idx) + " as usize]"
+    Expr.Field(_, _) -> cg_lvalue(i, sc, expr_field_expr(e)) + "." + expr_field_name(e)
+    Expr.Index(_, _) -> cg_lvalue(i, sc, expr_index_expr(e)) + "[" + cg_expr(i, sc, expr_index_idx(e)) + " as usize]"
     _ -> cg_expr(i, sc, e)
   }
 }
@@ -596,7 +596,9 @@ cg_struct_val := (i: int, sc: Scope, e: Expr) -> str {
 detect_variant_qual := (f: Expr) -> str {
   fd := f
   match fd {
-    Expr.Field(base, name) -> {
+    Expr.Field(_, _) -> {
+      base := expr_field_expr(f)
+      name := expr_field_name(f)
       bd := base
       match bd {
         Expr.Var(en) -> {
@@ -868,16 +870,17 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         }
       }
     }
-    Expr.Field(base_e, field) -> {
-      base := cg_expr(i, sc, base_e)
+    Expr.Field(_, _) -> {
+      base := cg_expr(i, sc, expr_field_expr(expr))
+      field := expr_field_name(expr)
       if (is_upper_first(base)) {
         base + "::" + field
       } else {
         base + "." + field
       }
     }
-    Expr.Index(base_e, idx_e) -> {
-      cg_expr(i, sc, base_e) + ".homun_idx(" + cg_expr(i, sc, idx_e) + ")"
+    Expr.Index(_, _) -> {
+      cg_expr(i, sc, expr_index_expr(expr)) + ".homun_idx(" + cg_expr(i, sc, expr_index_idx(expr)) + ")"
     }
     Expr.Slice(_, _, _, _) -> {
       base_s := cg_expr(i, sc, expr_slice_expr(expr))
@@ -950,7 +953,9 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         "-" + cg_expr(i, sc, e)
       }
     }
-    Expr.Pipe(lhs, rhs) -> {
+    Expr.Pipe(_, _) -> {
+      lhs := expr_pipe_lhs(expr)
+      rhs := expr_pipe_rhs(expr)
       if (expr_kind(rhs) == "Call") {
         f := expr_call_func(rhs)
         args := expr_call_args(rhs)
@@ -976,7 +981,9 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         cg_expr(i, sc, rhs) + "(" + cg_expr(i, sc, lhs) + ")"
       }
     }
-    Expr.Call(f, args) -> {
+    Expr.Call(_, _) -> {
+      f := expr_call_func(expr)
+      args := expr_call_args(expr)
       if (expr_kind(f) == "Var") {
         fname := expr_var_name(f)
         if (fname == "print") {
