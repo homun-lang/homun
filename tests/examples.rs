@@ -295,6 +295,35 @@ fn test_example_cross_file_box_match() {
 }
 
 #[test]
+fn test_example_box_construct() {
+    let out = compile_and_run(Path::new("_site/examples/box_construct.hom"));
+    for (label, want) in [
+        ("leaf_depth", "0"),
+        ("leaf_sum", "7"),
+        ("flat_depth", "1"),
+        ("flat_sum", "3"),
+        ("nested_depth", "2"),
+        ("nested_sum", "6"),
+    ] {
+        let needle = format!("{}={}", label, want);
+        assert!(
+            out.contains(&needle),
+            "box_construct should print {needle}, got: {out}"
+        );
+    }
+}
+
+#[test]
+fn test_example_cross_file_box_construct() {
+    let out = compile_and_run(Path::new("tests/examples/cross_file_box_construct/run.hom"));
+    assert!(
+        out.contains("cross_depth=2"),
+        "cross_file_box_construct should print cross_depth=2, got: {}",
+        out
+    );
+}
+
+#[test]
 fn test_example_char_builtins() {
     let out = compile_and_run(Path::new("tests/examples/char_builtins/char_builtins.hom"));
     for label in [

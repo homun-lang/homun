@@ -1,0 +1,27 @@
+// main.hom — module B: imports Tree from module A and constructs a recursive
+// instance via positional variant call.
+//
+// Exercises F12 cross-file Box<T> auto-wrap: when codegen sees
+// `Tree.Node(...)` here, the variant_field_types registry (populated during
+// tree.hom's earlier DFS-ordered codegen pass) tells it that both fields
+// land on Box<Tree>. F12 emits `Tree::Node(Box::new(...), Box::new(...))`
+// without main.hom needing the enum definition in-scope at parse time.
+
+use std
+use tree
+
+depth := (t: Tree) -> int {
+  match t {
+    Tree.Leaf(_) -> 0
+    Tree.Node(l, r) -> {
+      dl := depth(l)
+      dr := depth(r)
+      1 + (if (dl > dr) { dl } else { dr })
+    }
+  }
+}
+
+main := () -> _ {
+  t := Tree.Node(Tree.Leaf(1), Tree.Node(Tree.Leaf(2), Tree.Leaf(3)))
+  print("cross_depth=${depth(t)}")
+}

@@ -5,12 +5,15 @@
 //   dep/codegen_helpers.rs — ind, codegen_string, codegen_type, etc.
 //   src/codegen_imp.rs     — RsContent/HomFiles type aliases, accessors
 //
-// Stmt/Pat/TypeExpr dispatch uses direct match arms on AST variants.
-// Expr dispatch also uses direct match — variants whose payload is Box<Expr>
-// keep accessor calls inside the arm because F8b auto-deref doesn't apply when
-// the enum (Expr) is defined cross-file (in ast.hom). Same applies to TypeExpr
-// (List/Dict/Set/Option payloads are Box<TypeExpr>). Lambda has named fields
-// and is handled via early-out before the match.
+// Stmt/Pat/TypeExpr/Expr dispatch uses direct match arms on AST variants.
+// F9 cross-file Box<T> auto-deref: when matching a variant whose field is
+// Box<Expr> (because Expr is self-recursive, defined in ast.hom), positional
+// bindings like `Expr.Field(base, name)` auto-deref so the body sees `base: Expr`.
+// codegen_program_with_resolved's pre-pass populates the variant_field_types
+// registry for cross-file enums via DFS-ordered codegen passes (see line ~1576).
+// MIGRATION NOTE: ~100 expr_*/type_* accessors in dep/codegen_helpers.rs predate
+// F9 and are now redundant — match arms can bind Box<T> fields directly.
+// Lambda has named fields and is handled via early-out before the match.
 //
 // Public API (called from lib.rs mod codegen_hom after P2.4 wiring):
 //   codegen_program_with_resolved(prog, hom_files, rs_content) -> str
@@ -418,8 +421,8 @@ cg_lvalue := (i: int, sc: Scope, e: Expr) -> str {
   e_d := e
   match e_d {
     Expr.Var(n) -> n
-    Expr.Field(_, _) -> cg_lvalue(i, sc, expr_field_expr(e)) + "." + expr_field_name(e)
-    Expr.Index(_, _) -> cg_lvalue(i, sc, expr_index_expr(e)) + "[" + cg_expr(i, sc, expr_index_idx(e)) + " as usize]"
+    Expr.Field(base, name) -> cg_lvalue(i, sc, base) + "." + name
+    Expr.Index(base, idx) -> cg_lvalue(i, sc, base) + "[" + cg_expr(i, sc, idx) + " as usize]"
     _ -> cg_expr(i, sc, e)
   }
 }
@@ -582,6 +585,42 @@ cg_struct_val := (i: int, sc: Scope, e: Expr) -> str {
 
 // ─── cg_general_call ──────────────────────────────────────────────────────────
 // Emit f(clone_args) for a general function call.
+//
+// F12 construct-side Box<T> auto-wrap (mirrors F9 match-side auto-deref):
+// when `f` is a variant constructor `EnumName.VariantName` and a field's
+// declared type is the enum itself (so codegen wrapped it as Box<T>),
+// wrap the corresponding arg with `Box::new(...)`. MVP only handles direct
+// recursive fields; nested Option<T>/Tuple recursion still needs accessors.
+
+// Returns "EnumName.VariantName" if f is a variant constructor, else "".
+detect_variant_qual := (f: Expr) -> str {
+  fd := f
+  match fd {
+    Expr.Field(base, name) -> {
+      bd := base
+      match bd {
+        Expr.Var(en) -> {
+          if (is_upper_first(en) and is_upper_first(name)) {
+            "${en}.${name}"
+          } else { "" }
+        }
+        _ -> ""
+      }
+    }
+    _ -> ""
+  }
+}
+
+// If `field_ty` is TypeExpr.Name(enum_name), wrap arg_s with Box::new(...).
+maybe_box_wrap := (arg_s: str, field_ty: TypeExpr, enum_name: str) -> str {
+  td := field_ty
+  match td {
+    TypeExpr.Name(n) -> {
+      if (n == enum_name) { "Box::new(" + arg_s + ")" } else { arg_s }
+    }
+    _ -> arg_s
+  }
+}
 
 cg_general_call := (i: int, sc: Scope, f: Expr, args: @[Expr]) -> str {
   fn_name := if (expr_kind(f) == "Var") { expr_var_name(f) } else { "" }
@@ -590,6 +629,15 @@ cg_general_call := (i: int, sc: Scope, f: Expr, args: @[Expr]) -> str {
   } else {
     args
   }
+  // F12 variant constructor detection
+  qual := detect_variant_qual(f)
+  has_box_info := qual != "" and variant_field_types_known(qual)
+  field_tys := if (has_box_info) { variant_field_types_get(qual) } else { @[] }
+  enum_name := if (has_box_info) {
+    dot := find(qual, ".")
+    substr(qual, 0, dot)
+  } else { "" }
+  nft := len(field_tys)
   n := len(filled_args)
   arg_strs := @[]
   ai := 0
@@ -608,6 +656,11 @@ cg_general_call := (i: int, sc: Scope, f: Expr, args: @[Expr]) -> str {
       }
     } else {
       cg_clone_arg(i, sc, filled_args[ai])
+    }
+    arg_s := if (has_box_info and ai < nft) {
+      maybe_box_wrap(arg_s, field_tys[ai], enum_name)
+    } else {
+      arg_s
     }
     push(arg_strs, arg_s)
     ai := ai + 1
@@ -782,11 +835,11 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
     body_lines := cg_body(i + 1, inner_sc, lam_stmts, fe)
     => "|" + param_str + "| {\n" + join(body_lines, "\n") + "\n" + ind(i) + "}"
   }
-  // Box<Expr>-bearing variants (Field/Index/BinOp/Pipe/Match/etc.) keep
-  // accessor calls because Expr is defined in ast.hom and the bootstrap can't
-  // see its variant_field_types — F8b auto-deref doesn't apply cross-file.
-  // e_dispatch is a clone that match consumes; accessors below run on the
-  // original `expr` parameter, which remains in scope.
+  // Box<Expr>-bearing variants (Field/Index/BinOp/Pipe/Match/etc.) historically
+  // used accessor calls (expr_field_expr, expr_binop_lhs, etc.) — predating F9.
+  // F9 cross-file Box<T> auto-deref now makes direct positional bindings safe;
+  // these accessors are pending migration. e_dispatch clones for match consume;
+  // remaining accessor calls operate on the original `expr` parameter.
   e_dispatch := expr
   match e_dispatch {
     Expr.Int(n) -> str(n)
@@ -815,17 +868,16 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         }
       }
     }
-    Expr.Field(_, _) -> {
-      base := cg_expr(i, sc, expr_field_expr(expr))
-      field := expr_field_name(expr)
+    Expr.Field(base_e, field) -> {
+      base := cg_expr(i, sc, base_e)
       if (is_upper_first(base)) {
         base + "::" + field
       } else {
         base + "." + field
       }
     }
-    Expr.Index(_, _) -> {
-      cg_expr(i, sc, expr_index_expr(expr)) + ".homun_idx(" + cg_expr(i, sc, expr_index_idx(expr)) + ")"
+    Expr.Index(base_e, idx_e) -> {
+      cg_expr(i, sc, base_e) + ".homun_idx(" + cg_expr(i, sc, idx_e) + ")"
     }
     Expr.Slice(_, _, _, _) -> {
       base_s := cg_expr(i, sc, expr_slice_expr(expr))
@@ -898,9 +950,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         "-" + cg_expr(i, sc, e)
       }
     }
-    Expr.Pipe(_, _) -> {
-      lhs := expr_pipe_lhs(expr)
-      rhs := expr_pipe_rhs(expr)
+    Expr.Pipe(lhs, rhs) -> {
       if (expr_kind(rhs) == "Call") {
         f := expr_call_func(rhs)
         args := expr_call_args(rhs)
@@ -926,9 +976,7 @@ cg_expr := (i: int, sc: Scope, expr: Expr) -> str {
         cg_expr(i, sc, rhs) + "(" + cg_expr(i, sc, lhs) + ")"
       }
     }
-    Expr.Call(_, _) -> {
-      f := expr_call_func(expr)
-      args := expr_call_args(expr)
+    Expr.Call(f, args) -> {
       if (expr_kind(f) == "Var") {
         fname := expr_var_name(f)
         if (fname == "print") {

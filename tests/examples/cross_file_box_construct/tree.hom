@@ -1,0 +1,10 @@
+// tree.hom — module A: defines a self-recursive enum with direct recursion.
+// Codegen wraps the recursive payload in Box<T>, so Rust output is
+// `Node(Box<Tree>, Box<Tree>)`. F12 lets module B construct values
+// without writing Box::new() explicitly.
+
+@derive(Clone, Debug)
+Tree := enum {
+  Leaf(int)
+  Node(Tree, Tree)
+}

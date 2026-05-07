@@ -1,0 +1,53 @@
+// box_construct.hom — F12 construct-side Box<T> auto-wrap (same-file).
+//
+// When a self-recursive enum variant has a directly recursive field type
+// (e.g. `Node(Tree, Tree)`), codegen wraps it as `Box<Tree>` in Rust.
+// F12 makes the call-site `Tree.Node(left, right)` auto-emit
+// `Tree::Node(Box::new(left), Box::new(right))`.
+// Mirrors F9 match-side auto-deref so construct ↔ destructure stay symmetric.
+use std
+
+@derive(Clone, Debug)
+Tree := enum {
+  Leaf(int)
+  Node(Tree, Tree)
+}
+
+depth := (t: Tree) -> int {
+  match t {
+    Tree.Leaf(_) -> 0
+    Tree.Node(l, r) -> {
+      dl := depth(l)
+      dr := depth(r)
+      1 + (if (dl > dr) { dl } else { dr })
+    }
+  }
+}
+
+sum_leaves := (t: Tree) -> int {
+  match t {
+    Tree.Leaf(v) -> v
+    Tree.Node(l, r) -> sum_leaves(l) + sum_leaves(r)
+  }
+}
+
+main := () -> _ {
+  // F12 each Tree.Node arg auto-wraps Box::new — no Box::new in source.
+  t1 := Tree.Leaf(7)
+  print("leaf_depth=${depth(t1)}")
+
+  t2 := Tree.Leaf(7)
+  print("leaf_sum=${sum_leaves(t2)}")
+
+  t3 := Tree.Node(Tree.Leaf(1), Tree.Leaf(2))
+  print("flat_depth=${depth(t3)}")
+
+  t4 := Tree.Node(Tree.Leaf(1), Tree.Leaf(2))
+  print("flat_sum=${sum_leaves(t4)}")
+
+  t5 := Tree.Node(Tree.Leaf(1), Tree.Node(Tree.Leaf(2), Tree.Leaf(3)))
+  print("nested_depth=${depth(t5)}")
+
+  t6 := Tree.Node(Tree.Leaf(1), Tree.Node(Tree.Leaf(2), Tree.Leaf(3)))
+  print("nested_sum=${sum_leaves(t6)}")
+}

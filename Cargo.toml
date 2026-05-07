@@ -1,12 +1,12 @@
 [package]
 name = "homunc"
-version = "0.87.0"
+version = "0.88.0"
 edition = "2024"
 build = "src/build.rs"
 
 [[bin]]
 name = "homunc"
-path = "gen/main_entry.rs"
+path = "src/main_entry.rs"
 
 [lib]
 name = "homunc"

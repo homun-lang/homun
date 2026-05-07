@@ -6,6 +6,17 @@ Branches: `history` (spec drafts), `haskell` (Haskell compiler), `rust` (Rust re
 
 ---
 
+### v0.88 — 2026-05-07 — F12 construct-side Box auto-wrap, F9 cross-file fix, gen/ → src/
+
+Two language-feature corrections + bin-entry simplification, in three commits.
+
+- **F12 construct-side Box<T> auto-wrap**: when a self-recursive enum variant has a directly recursive field (e.g. `Tree.Node(Tree, Tree)`), codegen now auto-emits `Box::new(...)` around each recursive arg at the call site. Mirrors F9 match-side `let l = *l;` rebinds — construct ↔ destructure stay symmetric. Reuses the existing `variant_field_types` registry (DFS-pre-pass, cross-file aware). MVP handles direct `TypeExpr.Name(enum)`; nested `Option<T>`/Tuple recursion still falls through. Two new fixtures: `_site/examples/box_construct.hom` (same-file) and `tests/examples/cross_file_box_construct/` (cross-file). Unblocks the bulk of `parser_imp.rs`'s `mk_expr_*`/`mk_type_*` constructors for v0.89 migration
+- **Stale F9 comment fix + accessor migration pilot**: a stale comment in `codegen.hom` claimed F8b auto-deref doesn't apply when the enum is defined cross-file. F9 (v0.85) actually fixed this — verified by adding cross-file fixtures with direct positional bindings (`Tree.Node(l, r) → let l = *l; let r = *r;`). Migrated 6 accessor call sites in `codegen.hom` (cg_lvalue, cg_expr arms for Field/Index/Pipe/Call) and 6 in `sema.hom` (Field/Index/BinOp/Pipe/UnOp/Call) from `expr_*_*` accessors to direct positional match bindings. Per-call accessor count in `codegen.hom` dropped from 21 to ~9
+- **`gen/` → `src/main_entry.rs`**: the 4-line bin entry shim now lives directly in `src/main_entry.rs` (committed, static). `build.rs::generate_bin_entry()` and the `/gen/` `.gitignore` exception both deleted (~25 lines net). Cargo's `[[bin]].path` points at `src/main_entry.rs`. No behavior change — purely a structural simplification
+- 147 tests pass (118 unit + 24 examples + 5 std-tests), `cargo fmt --check` + `cargo clippy --release -- -D warnings` clean
+
+---
+
 ### v0.87 — 2026-05-06 — Audit follow-ups: codegen dedupe, heap mut, _imp.rs shrink, doc/code drift cleanup
 
 Nine-ticket batch from the v0.86 audit, executed by the autonomous claude-bot. 27 tests pass, `cargo fmt` + `cargo clippy -- -D warnings` clean. Net diff: **+220 / −374** across 19 files.
